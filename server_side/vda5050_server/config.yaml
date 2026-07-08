@@ -2,6 +2,7 @@
 client_manufacturer: "Arcturus-Logistics"
 client_serial_number: "Kashiwa-Robot-001"
 warehouse_map_id: "main_warehouse_zone_b"
+vda5050_protocol_version: "3.0.0"
 
 # Network Infrastructure Settings
 mqtt_broker_url: "localhost"

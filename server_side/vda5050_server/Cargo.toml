@@ -17,3 +17,6 @@ serde_yaml = "0.9"
 
 # A native, pure-Rust asynchronous MQTT client library
 rumqttc = "0.24"
+
+# Add the official Common Data Representation (CDR) deserialization engine
+cdr = "0.2.4"

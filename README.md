@@ -1,6 +1,8 @@
-# Zenoh VDA5050 Workspace Documentation
+# ISSEM: Interoperable Semantic Synchronization Enhancement Module
 
-This repository establishes a decoupled, ultra-low-latency bridge between an internal robot operating ecosystem (**ROS 2 / DDS**) and an enterprise industrial fleet management fabric (**VDA5050 / MQTT**).
+ISSEM is a high-performance, decoupled, ultra-low-latency middleware fabric that bridges the gap between internal robot operating ecosystems (**ROS 2 / DDS**) and enterprise industrial fleet management frameworks (**VDA5050 / MQTT**).
+
+Designed as an enterprise enhancement asset, ISSEM seamlessly translates raw binary robot telemetry into standardized industrial JSON states while enabling top-tier warehouse execution systems to dispatch real-time coordinate orders back to the fleet.
 
 ---
 
@@ -16,7 +18,7 @@ This repository establishes a decoupled, ultra-low-latency bridge between an int
     * Deployed directly on the AMR as a standalone Zenoh Client.
     * Intercepts local DDS traffic straight from loopback memory, completely bypassing heavy Wi-Fi multicast network flooding.
     * Pipes the filtered data over a stable, point-to-point TCP connection directly to the server infrastructure.
-* **Translation Engine (`vda5050_server`)**
+* **ISSEM Translation Engine (`vda5050_server`)**
     * A high-performance standalone Rust Peer Binary running an asynchronous `tokio` runtime worker loop on the factory edge server.
     * Dynamically pulls environment variables and ports from an external `config.yaml` card.
     * Hosts the TCP listener socket, catches frames over the network using a multi-segment wildcard (`**/odom`), and parses raw telemetry frames natively into industrial JSON payloads.
@@ -33,6 +35,18 @@ This repository establishes a decoupled, ultra-low-latency bridge between an int
 | **3. Transport Uplink** | Network Pipe | The bridge streams tokens as a TCP Client directly to the edge server port (`7448`). | Compressed Binary |
 | **4. Ingest & Map** | Edge Server | Rust Server picks up frames asynchronously via `recv_async()`, loads configuration states, and builds a VDA5050 JSON payload. | `serde_json::Value` |
 | **5. Global Publish** | Enterprise Bus | The server flushes the structured string over to the Mosquitto broker on topic `vda5050/v2/state`. | VDA5050 JSON String |
+
+### 3. Server Source File Structure
+
+```text
+vda5050_server/
+├── Cargo.toml
+├── config.yaml
+└── src/
+    ├── main.rs         <-- Orchestration loop & network tasks
+    ├── ros_msg.rs      <-- Pure ROS 2 DDS binary formats (Odom, PoseStamped)
+    └── vda_msg.rs      <-- Pure VDA5050 corporate JSON patterns (Orders, Actions)
+```
 
 ---
 
@@ -105,12 +119,12 @@ To run a full end-to-end telemetry system integration test, initialize the follo
     ```
 * **Terminal 4: Start the VDA5050 Translation Server (TCP Listener)**
     ```bash
-    cd ~/zenoh_vda5050_workspace/server_side/vda5050_server
+    cd ~/issem/server_side/vda5050_server
     ./target/release/vda5050_server
     ```
 * **Terminal 5: Fire Up the AMR Client Tunnel (TCP Client)**
     ```bash
-    cd ~/zenoh_vda5050_workspace/amr_side
+    cd ~/issem/amr_side
     ./zenoh-bridge-ros2dds client -e tcp/127.0.0.1:7448
     ```
 
