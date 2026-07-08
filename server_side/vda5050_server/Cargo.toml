@@ -1,0 +1,19 @@
+[package]
+name = "vda5050_server"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+# The rock-solid, production-grade native Zenoh framework
+zenoh = "1.0.0"
+
+# High-performance asynchronous execution runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Industrial-strength serialization and parsing toolsets
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# A native, pure-Rust asynchronous MQTT client library
+rumqttc = "0.24"
