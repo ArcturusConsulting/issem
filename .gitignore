@@ -2,10 +2,11 @@
 # Ignore the downloaded 3rd party network bridge binary executable
 amr_side/zenoh-bridge-ros2dds
 amr_side/*.tar.gz
+amr_side/*.so
 
 # === Server Side Block ===
 # Ignore the massive Cargo compilation output directory (rebuilt locally)
-server_side/operators/vda5050_mapper/target/
+server_side/vda5050_server/target/
 
 # Ignore your compiled shared machine asset in the running directory
 # (It gets regenerated every time you run cargo build)
