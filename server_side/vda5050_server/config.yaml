@@ -1,0 +1,11 @@
+# === Arcturus Fleet Client Provisioning Map ===
+client_manufacturer: "Arcturus-Logistics"
+client_serial_number: "Kashiwa-Robot-001"
+warehouse_map_id: "main_warehouse_zone_b"
+
+# Network Infrastructure Settings
+mqtt_broker_url: "localhost"
+mqtt_broker_port: 1883
+
+zenoh_listen_host: "127.0.0.1"
+zenoh_listen_port: 7448
