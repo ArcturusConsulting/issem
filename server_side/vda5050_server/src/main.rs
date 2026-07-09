@@ -48,8 +48,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         client_config.client_manufacturer,
         client_config.client_serial_number
     );
-    
+
+    let action_topic = format!(
+        "vda5050/{}/{}/{}/instantAction",
+        client_config.vda5050_protocol_version,
+        client_config.client_manufacturer,
+        client_config.client_serial_number
+    );    
     mqtt_client.subscribe(&order_topic, QoS::AtLeastOnce).await?;
+    mqtt_client.subscribe(&action_topic, QoS::AtLeastOnce).await?;
     println!("🌐 Connected to Enterprise Broker. Subscribed to topic: {}", order_topic);
 
     // 3. Open Edge Zenoh Peer Socket Infrastructure
@@ -65,22 +72,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("🔌 Zenoh cluster portal established on {}", zenoh_endpoint);
 
     // 4. Bind Transport Handles
-    let telemetry_subscriber = zenoh_session.declare_subscriber("**/odom").await?;
-    let navigation_publisher = zenoh_session.declare_publisher("goal_pose").await?;
+    let telemetry_subscriber = zenoh_session.declare_subscriber("**/amcl_pose").await?;
     println!("📥 Abstract network IO pipes successfully registered.");
 
+    // Declare a shared atomic pointer tracking the robot's live spatial coordinates
+    let shared_pose = std::sync::Arc::new(std::sync::Mutex::new(crate::ros_msg::Pose {
+        position: crate::ros_msg::Point3D { x: 0.0, y: 0.0, z: 0.0 },
+        orientation: crate::ros_msg::Quaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
+    }));
+
+    // Pass to your uplink loop so it can write live coordinates
+    let uplink_pose = shared_pose.clone(); 
+
+    // Pass to your downlink loop so it can read coordinates during a pause
+    let downlink_pose = shared_pose.clone();
+
     // 5. SPAWN DOWNLINK ENGINE (MQTT -> ROS 2 via Zenoh background task)
-    tokio::spawn(downlink::run_engine(
-        event_loop,
-        order_topic,
-        navigation_publisher,
-    ));
+    tokio::spawn(async move {
+        downlink::run_engine(
+            event_loop,           
+            order_topic,
+            action_topic,         
+            zenoh_session.clone(), 
+            downlink_pose, // FIXED: Passed the thread-safe reference clone here
+        ).await;
+    });
 
     // 6. EXECUTE UPLINK LOOP ON PRIMARY THREAD (ROS 2 -> MQTT blocking call)
     uplink::run_engine(
         client_config,
         telemetry_subscriber,
         mqtt_client,
+        uplink_pose, // FIXED: Passed the thread-safe reference clone here
     ).await?;
 
     Ok(())

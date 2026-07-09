@@ -22,3 +22,20 @@ pub struct Vda5050Order {
     pub order_id: String,
     pub nodes: Vec<Vda5050Node>,
 }
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct Vda5050Action {
+    #[serde(rename = "actionId")]
+    pub action_id: String,
+    #[serde(rename = "actionType")]
+    pub action_type: String,
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct Vda5050InstantActions {
+    #[serde(rename = "headerId")]
+    pub header_id: u64,
+    pub timestamp: u64,
+    pub version: String,
+    pub actions: Vec<Vda5050Action>,
+}

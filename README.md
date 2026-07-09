@@ -153,6 +153,65 @@ mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/order" -m '
 }'
 ```
 
+### 5. Phase 3: 
+
+**Monitor the Connection Lifecycles (run this before running the server)**
+```bash
+mosquitto_sub -h localhost -p 1883 -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/connection" -v
+```
+
+**Interupt the order**
+```bash
+mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/instantAction" -m '{
+  "headerId": 105,
+  "timestamp": 1783565907,
+  "version": "3.0.0",
+  "actions": [
+    {
+      "actionId": "estop_immed_01",
+      "actionType": "pause"
+    }
+  ]
+}'
+```
+
+**Resume the order****
+```bash
+mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/instantAction" -m '{
+  "headerId": 2,
+  "timestamp": 1783584570,
+  "version": "3.0.0",
+  "manufacturer": "Arcturus-Logistics",
+  "serialNumber": "Kashiwa-Robot-001",
+  "actions": [
+    {
+      "actionType": "resume",
+      "actionId": "action_resume_001",
+      "blockingType": "HARD"
+    }
+  ]
+}'
+```
+
+**Cancel the order**
+```bash
+mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/instantAction" -m '{
+  "headerId": 3,
+  "timestamp": 1783584600,
+  "version": "3.0.0",
+  "manufacturer": "Arcturus-Logistics",
+  "serialNumber": "Kashiwa-Robot-001",
+  "actions": [
+    {
+      "actionType": "cancelOrder",
+      "actionId": "action_cancel_001",
+      "blockingType": "HARD"
+    }
+  ]
+}'
+
+```
+
 ---
 
 ## Useful Commands

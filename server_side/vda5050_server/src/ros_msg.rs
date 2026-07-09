@@ -71,3 +71,19 @@ pub struct PoseStamped {
     pub header: RosHeader,
     pub pose: Pose,
 }
+
+// ============================================================================
+// NATIVE ROS 2 ACTION CANCELLATION FIELDS (STRATEGY 1 PREEMPTION)
+// Models an action_msgs/srv/CancelGoal Request payload
+// ============================================================================
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct GoalInfo {
+    pub uuid: [u8; 16], // 16-byte array. All zeros = Cancel all active goals
+    pub stamp: RosTime,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct CancelGoalRequest {
+    pub goal_info: GoalInfo,
+}
