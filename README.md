@@ -109,7 +109,7 @@ To run a full end-to-end telemetry system integration test, initialize the follo
 * **Terminal 2: The Gazebo Virtual Warehouse World**
     ```bash
     # Execute inside your active ROS 2 navigation workspace
-    ros2 launch turtlebot4_gz_bringup turtlebot4_gz.launch.py world:=warehouse model:=lite localization:=true nav2:=true
+    ros2 launch turtlebot4_gz_bringup turtlebot4_gz.launch.py world:=warehouse model:=lite localization:=true nav2:=true use_sim_time:=true
     ```
 
 ### 2. Synchronize Localization and Launch Applications
@@ -128,11 +128,30 @@ To run a full end-to-end telemetry system integration test, initialize the follo
     ./zenoh-bridge-ros2dds client -e tcp/127.0.0.1:7448
     ```
 
-### 3. Verify Live Global Output Stream
+### 3. Phase 1: Verify Uplink Stream (ROS2 -> VDA5050)
 * **Terminal 6: Monitor Industrial Outbound Telemetry**
     ```bash
     mosquitto_sub -t "vda5050/v2/state" -v
     ```
+
+---
+
+### 4. Phase 2: Verify Downlink Stream (VDA5050 -> ROS2)
+```bash
+mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/order" -m '{
+  "orderId": "order_2026_07_09_001",
+  "nodes": [
+    {
+      "nodeId": "warehouse_pallet_location_alpha",
+      "nodePosition": {
+        "x": 2.0,
+        "y": 1.5,
+        "theta": 0.0
+      }
+    }
+  ]
+}'
+```
 
 ---
 
@@ -149,24 +168,4 @@ ros2 daemon stop
 
 # Force-stop any conflicting background Mosquitto instances
 sudo killall mosquitto
-```
-
-### Manual Node Interventions & Test Dispatching
-```bash
-# Reset / Overwrite the robot's physical profile on the map
-ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped "{header: {frame_id: 'map'}, pose: {pose: {position: {x: 0.814, y: -0.655, z: 0.0}, orientation: {w: 1.0}}}}"
-
-# Dispatch a mock industrial path routing order straight to the Fleet Broker
-mosquitto_pub -t "vda5050/v2/Arcturus/Robot001/order" -m '{
-  "orderId": "order_2026_07_07",
-  "nodes": [
-    {
-      "nodeId": "warehouse_waypoint_alpha",
-      "nodePosition": {
-        "x": 3.0,
-        "y": 2.0
-      }
-    }
-  ]
-}'
 ```
