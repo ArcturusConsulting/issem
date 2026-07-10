@@ -18,4 +18,7 @@ pub struct MasterSystemConfig {
     pub mqtt_broker_port: u16,
     
     pub redis_connection_url: String,
+    
+    pub zenoh_listen_host: String,
+    pub zenoh_listen_port: u16,
 }

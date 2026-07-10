@@ -11,6 +11,8 @@ tokio = { workspace = true, features = ["full"] }
 redis = { workspace = true, features = ["tokio-comp"] }
 rumqttc = { workspace = true }
 log = { workspace = true }
+env_logger = { workspace = true }
+zenoh = { workspace = true } # FIXED: Inherit Zenoh session tools here
 
 # Inter-workspace internal subsystem links
 adapter_vda5050 = { path = "../adapter_vda5050" }
