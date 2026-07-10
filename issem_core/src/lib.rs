@@ -1,14 +1,21 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Subsystem Root: issem_core
+//! Transactional brain driving multi-tenant coordination and state synchronization.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod state_manager;
+pub mod engine;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+use serde::Deserialize;
+
+/// Integrated master configuration map pulling fields for all sub-crates.
+#[derive(Debug, Deserialize, Clone)]
+pub struct MasterSystemConfig {
+    pub vda5050_protocol_version: String,
+    pub client_manufacturer: String,
+    pub warehouse_map_id: String,
+    pub target_amr_serials: Vec<String>,
+    
+    pub mqtt_broker_url: String,
+    pub mqtt_broker_port: u16,
+    
+    pub redis_connection_url: String,
 }

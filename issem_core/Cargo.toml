@@ -1,6 +1,17 @@
 [package]
 name = "issem_core"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+# Inherit centralized dependencies from the workspace root manifest
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+redis = { workspace = true, features = ["tokio-comp"] }
+rumqttc = { workspace = true }
+log = { workspace = true }
+
+# Inter-workspace internal subsystem links
+adapter_vda5050 = { path = "../adapter_vda5050" }
+driver_zenoh_ros2 = { path = "../driver_zenoh_ros2" }

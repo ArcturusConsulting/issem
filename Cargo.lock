@@ -1118,6 +1118,16 @@ dependencies = [
 [[package]]
 name = "issem_core"
 version = "0.1.0"
+dependencies = [
+ "adapter_vda5050",
+ "driver_zenoh_ros2",
+ "log",
+ "redis",
+ "rumqttc",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "itertools"
