@@ -1,8 +1,9 @@
-# ISSEM (Interoperable Stateless Synchronization Enabler Module)
+# ISSEM (Industrial Stateless Server Orchestration Middleware)
 
 [![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Protocol](https://img.shields.io/badge/protocol-VDA5050%20v3.0.0-blue.svg)](https://github.com/VDA5050/VDA5050)
 [![Middleware](https://img.shields.io/badge/middleware-Zenoh%20%7C%20ROS%202-green.svg)](https://zenoh.io/)
+[![Orchestration](https://img.shields.io/badge/orchestration-K3s%20%7C%20Kubernetes-blueviolet.svg)](https://k3s.io/)
 [![Database](https://img.shields.io/badge/state-Redis%20(Durable)-red.svg)](https://redis.io/)
 
 ISSEM is a centralized, high-performance, stateless server-side gateway written in pure Rust. It bridges the structural chasm between corporate **Warehouse Execution Systems (WES)** and agile, open-source **Autonomous Mobile Robots (AMRs)**. 
@@ -15,13 +16,13 @@ The framework intercepts industrial **VDA5050 JSON payloads over MQTT**, maps hi
 
 ## 1. Value Proposition & Project Context
 
-In modern industrial logistics hubs (such as third-party logistics networks and heavy manufacturing plants), enterprise IT systems mandate strict **VDA5050 compliance over MQTT** to eliminate vendor lock-in. Conversely, modern AMRs run on highly dynamic, binary network graphs like **ROS 2 Jazzy and Zenoh/DDS**. 
+In modern industrial logistics hubs (such as third-party logistics networks and heavy manufacturing plants in Japan), enterprise IT systems mandate strict **VDA5050 compliance over MQTT** to eliminate vendor lock-in. Conversely, modern AMRs run on highly dynamic, binary network graphs like **ROS 2 Jazzy and Zenoh/DDS**. 
 
-ISSEM provides a **Stateless On-Premise Container pattern** designed to serve as a high-performance alternative to massive multi-vendor frameworks (like Open-RMF) in environments where the WES commands the automation layer directly.
+To meet the strict industrial mandate of **「止まらない現場」 (Tomaranai Genba — The Floor That Never Stops)**, ISSEM provides a **Centralized K3s Edge Orchestration pattern** designed to serve as a high-availability, low-footprint alternative to massive multi-vendor frameworks (like Open-RMF) in environments where the WES commands the automation layer directly.
 
 ### Core Architecture Enhancements
 * **Off-Robot Stateless Compute:** Pulls protocol serialization overhead off the physical vehicles. AMRs communicate via lean, native binary streams over the air, saving edge CPU and battery capacity.
-* **Decoupled State & Resiliency:** Eliminates Single Points of Failure (SPOF). Compute logic is separated from memory blocks. If the Rust compute container crashes, an orchestrator (Docker/K3s) revives it in milliseconds; the new container reconnects to the persistent Redis node and restores full fleet navigation context instantly with zero data loss.
+* **Automated High Availability (HA) via K3s:** Eliminates Single Points of Failure (SPOF). Compute logic is entirely decoupled from memory blocks. If a physical edge server node suffers a hardware fault, the K3s cluster automatically migrates the ISSEM pod to a surviving node in seconds. The pod instantly reconnects to the persistent Redis storage layer, resuming fleet navigation context with zero data loss.
 * **DDS Bottleneck Mitigation:** Bypasses deep ROS 2 service/action queue constraints (such as the 31-byte Fast-DDS history allocation limit) by executing a stateful topic-level preemption engine for instant overrides (`pause`, `resume`, `cancelOrder`).
 
 ### Target Deployment Profiles
@@ -33,7 +34,7 @@ ISSEM provides a **Stateless On-Premise Container pattern** designed to serve as
 
 | Strategic Vector | Open-RMF Fleet System | InOrbit Edge Connector | ISSEM Gateway (This Project) |
 | :--- | :--- | :--- | :--- |
-| **Execution Domain** | Server Rack (Multi-Process Suite) | Physical Robot (Edge Node) | **Server Rack (Stateless Gateway)** |
+| **Execution Domain** | Server Rack (Multi-Process Suite) | Physical Robot (Edge Node) | **Server Rack (Stateless K3s Pod)** |
 | **Primary Code Stack** | C++ / ROS 2 / Python | C++ / ROS 2 / Python | **Pure Rust / Zenoh / Redis** |
 | **System Footprint** | Heavy (Requires Full ROS 2 Stack) | Medium (Edge Compute Overhead) | **Ultra-Lightweight Container** |
 | **Northbound Interface**| Proprietary WebSockets / REST | Standard VDA5050 over MQTT | **Standard VDA5050 over MQTT** |
@@ -43,19 +44,19 @@ ISSEM provides a **Stateless On-Premise Container pattern** designed to serve as
 
 ## 2. System Architecture & Data Flows
 
-ISSEM functions as the centralized multi-tenant traffic router deployed on the local warehouse server rack.
+ISSEM functions as the centralized multi-tenant traffic router deployed on a localized K3s server cluster on the warehouse floor.
 
 ```text
   ┌────────────────────────────────────────────────────────┐
   │                 ENTERPRISE NETWORK ZONE                │
   │  WES / ERP (VDA5050 JSON) ──► MQTT Broker (EMQX)       │
   └───────────────────────────┬────────────────────────────┘
-                              │ TCP Port
+                              │ TCP Port 1883 / 8883
   ┌───────────────────────────▼────────────────────────────┐
-  │            ISSEM ON-PREMISE CONTAINER STACK            │
+  │              ISSEM K3S EDGE ORCHESTRATION STACK        │
   │                                                        │
   │   ┌──────────────────────────┐   IPC   ┌────────────┐  │
-  │   │     issem_workspace      ├────────►│   Redis    │  │
+  │   │     issem-core Pod       ├────────►│ Redis Pod  │  │
   │   │  (Stateless Compute Core)│◄────────┤ (AOF Sync) │  │
   │   └─────────────┬────────────┴─────────┴────────────┘  │
   └─────────────────┼──────────────────────────────────────┘
@@ -63,10 +64,10 @@ ISSEM functions as the centralized multi-tenant traffic router deployed on the l
   ┌─────────────────▼──────────────────────────────────────┐
   │               LOCAL ROBOTICS EXECUTION ZONE            │
   │                                                        │
-  │      ┌───────────────────────┐ DDS┌────────────┐       │
-  │      │ Zenoh-DDS Edge Bridge ├───►│ Nav2 Stack │       │
-  │      └───────────────────────┘    └────────────┘       │
-  │                     [ ROS2 Robot ]                     │
+  │     ┌───────────────────────┐DDS ┌────────────┐        │
+  │     │ Zenoh-DDS Edge Bridge ├───►│ Nav2 Stack │        │
+  │     └───────────────────────┘    └────────────┘        │
+  │                      [ ROS2 robots ]                   │
   └────────────────────────────────────────────────────────┘
 ```
 
@@ -131,8 +132,12 @@ To ensure strict separation of concerns and eliminate protocol compile-time inte
 ```text
 issem_workspace/
 ├── Cargo.toml                      # Master workspace configuration
-├── docker-compose.yml              # Centralized container orchestration 
 ├── redis.conf                      # Hyper-durable persistence configuration
+│
+├── deploy/                         # Cloud-Native K3s Edge Manifests
+│   ├── deployment.yaml             # Stateless ISSEM core application pod setup
+│   ├── statefulset.yaml            # Durable Redis instance with PV storage
+│   └── service.yaml                # Internal cluster network routing definitions
 │
 ├── issem_core/                     # Transactional Engine Core
 │   ├── Cargo.toml                  # Encapsulates redis driver (tokio-comp)
@@ -191,7 +196,7 @@ amr:{serialNumber}:active_goal   -> String (Serialized CDR PoseStamped Binary st
 amr:{serialNumber}:lifecycle     -> Hash { "mode": "AUTOMATIC", "paused": "false" }
 ```
 
-To guarantee absolute durability against unexpected facility power failures, the accompanying container system runs a hybrid, high-frequency logging persistence loop:
+To guarantee absolute durability against unexpected facility power failures, the accompanying container system runs a hybrid, high-frequency logging persistence loop inside the K3s storage volume:
 
 ```ini
 # redis.conf
@@ -220,7 +225,7 @@ save 300 1
 ### Phase 4: Shared State Externalization & Multi-Tenancy ── `[IN PROGRESS]`
 * Refactoring localized memory collections into a robust, concurrent `redis` async wrapper.
 * Keying global multi-tenant namespaces dynamically using unique AMR `{serialNumber}` paths extracted from routing topologies.
-* Designing a hyper-durable container setup linking the stateless Rust application to a persistent Redis node backed by Append-Only File (AOF) disk sync writes every second.
+* Designing a hyper-durable K3s edge configuration linking the stateless Rust application deployment to a persistent Redis StatefulSet backed by Append-Only File (AOF) disk sync writes every second.
 
 ### Phase 5: East/West Physical PLC Handshaking ── `[PLANNED]`
 * Building an active, asynchronous OPC UA client stack to interface with factory PLCs.
@@ -230,22 +235,28 @@ save 300 1
 
 ## 5. Local Sandbox Verification & Verification Loop
 
-To run the complete stateless architecture suite in your local simulation environment, follow the steps below:
+To run the complete stateless cloud-native suite in your local sandbox cluster environment, follow the steps below:
 
-### 1. Provision the Environment
-Spin up the container cluster. This boots up the stateless Rust compute engine and initializes a persistent Redis node configured for AOF recording:
+### 1. Provision the Cluster Manifests
+Apply the declarative configurations to your running K3s engine. This builds your stateless compute pod and orchestrates your durable Redis storage mount:
 ```bash
-docker compose up --build -d
+kubectl apply -f deploy/
 ```
 
-### 2. Monitor Live Data Logs
-Attach to the container output logs to view real-time protocol processing:
+### 2. Monitor Cluster Lifecycle
+Verify the initialization status of your distributed container pods:
 ```bash
-docker logs -f issem_gateway
+kubectl get pods -w
 ```
 
-### 3. Dispatch an Enterprise Command
-Inject an industry-compliant VDA5050 `instantAction` payload into the local MQTT network loop using the terminal interface to verify the preemption mechanics:
+### 3. Monitor Live Data Logs
+Attach to the application runtime log stream to watch the translation loops:
+```bash
+kubectl logs -f deployment/issem-gateway
+```
+
+### 4. Dispatch an Enterprise Command
+Inject an industry-compliant VDA5050 `instantAction` payload into your broker network to test the preemption mechanics:
 ```bash
 mosquitto_pub -h localhost -p 1883 \
   -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/instantAction" \
@@ -265,10 +276,9 @@ mosquitto_pub -h localhost -p 1883 \
   }'
 ```
 
-### 4. Inject a Crash Scenario (Resiliency Drill)
-While a robot is tracking an active path, deliberately force a crash on the compute layer to test data persistence:
+### 5. Inject a Node Failure (Resiliency Drill)
+Simulate a catastrophic hardware rack failure by deleting the running application pod mid-transit:
 ```bash
-docker compose restart issem
+kubectl delete pod -l app=issem-gateway
 ```
-*Observe that the newly spawned container instance initializes, queries the surviving Redis node, and resumes tracking the AMR fleet coordinates within 50 milliseconds with zero loss of execution context.*
-```
+*Observe that the cluster controller handles container failover immediately. A fresh instance initializes on an available thread slot, hits the live Redis storage cache, and resumes handling active AMR coordinates within 50 milliseconds with zero loss of execution history.*
