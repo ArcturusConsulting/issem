@@ -50,7 +50,7 @@ ISSEM functions as the centralized multi-tenant traffic router deployed on the l
   │                 ENTERPRISE NETWORK ZONE                │
   │  WES / ERP (VDA5050 JSON) ──► MQTT Broker (EMQX)       │
   └───────────────────────────┬────────────────────────────┘
-                              │ TCP Port 1883 / 8883
+                              │ TCP Port
   ┌───────────────────────────▼────────────────────────────┐
   │            ISSEM ON-PREMISE CONTAINER STACK            │
   │                                                        │
@@ -63,10 +63,10 @@ ISSEM functions as the centralized multi-tenant traffic router deployed on the l
   ┌─────────────────▼──────────────────────────────────────┐
   │               LOCAL ROBOTICS EXECUTION ZONE            │
   │                                                        │
-  │     ┌───────────────────────┐  DDS  ┌────────────┐     │
-  │     │  Zenoh-DDS Edge Bridge├───►│ Nav2 Stack │     │
-  │     └───────────────────────┘    └────────────┘     │
-  │     [ TurtleBot 4 / Gazebo Harmonic Fleet ]            │
+  │      ┌───────────────────────┐ DDS┌────────────┐       │
+  │      │ Zenoh-DDS Edge Bridge ├───►│ Nav2 Stack │       │
+  │      └───────────────────────┘    └────────────┘       │
+  │                     [ ROS2 Robot ]                     │
   └────────────────────────────────────────────────────────┘
 ```
 
@@ -100,7 +100,7 @@ ISSEM bypasses this completely via a custom stateful tracking loop inside the co
 ┌──────────────────────────────────────────────┐
 │             ISSEM CORE COMPUTE               │
 │ 1. Read current active position from Redis   │
-│ 2. Retain original target waypoint in Cache │
+│ 2. Retain original target waypoint in Cache  │
 │ 3. Generate instant "Halt Target"            │
 └──────────────┬───────────────────────────────┘
                │
