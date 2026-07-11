@@ -21,4 +21,6 @@ pub struct MasterSystemConfig {
     
     pub zenoh_listen_host: String,
     pub zenoh_listen_port: u16,
+
+    pub opc_ua_plc_url: String,
 }

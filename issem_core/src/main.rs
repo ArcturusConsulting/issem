@@ -17,10 +17,12 @@ use driver_zenoh_ros2::ZenohDriverConfig;
 use driver_zenoh_ros2::telemetry::start_telemetry_uplink;
 use driver_zenoh_ros2::command::start_command_downlink;
 
+// Mount East/West client dependencies
+use adapter_opc_ua::start_opc_ua_gateway;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // 1. Initialize System Logger
-    // Enforces visibility guidelines for clean distributed logging streams
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info");
     }
@@ -28,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     info!("🚀 Initializing ISSEM Framework (Industrial Stateless Server Orchestration Middleware)...");
 
-    // 2. Ingest Integrated Configuration Map (JSON Strategy)
+    // 2. Ingest Integrated Configuration Map
     let mut config_file = File::open("config.json")
         .map_err(|_| "Catastrophic Startup Fault: Missing required 'config.json' file in working route path!")?;
     let mut config_raw = String::new();
@@ -37,11 +39,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let master_config: MasterSystemConfig = serde_json::from_str(&config_raw)?;
     info!("⚙️ Global deployment config parsed successfully. Target fleet count: {}", master_config.target_amr_serials.len());
 
-    // 3. Establish External Shared State Tier (Redis Cluster Portal)
+    // 3. Establish External Shared State Tier (Redis)
     info!("🗄️ Connecting to durable shared storage tier at {}...", master_config.redis_connection_url);
     let redis_client = redis::Client::open(master_config.redis_connection_url.clone())?;
-    
-    // Provision cluster schema settings for configured tenants
     initialize_fleet_registry(&master_config.target_amr_serials, &redis_client).await?;
 
     // 4. Initialize Multi-Tenant Southbound Zenoh Socket Portals
@@ -56,9 +56,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let zenoh_session = zenoh::open(zenoh_config).await?;
 
     // 5. Allocate Inter-Crate Bounded Communication Pipelines (MPSC)
-    // Limits thread memory allocation loops during runtime execution surges
     let (northbound_tx, northbound_rx) = tokio::sync::mpsc::channel(100);
     let (southbound_tx, southbound_rx) = tokio::sync::mpsc::channel(100);
+    
+    // Allocate the East/West pipeline queue to feed instructions down to PLCs
+    let (peripheral_tx, peripheral_rx) = tokio::sync::mpsc::channel(100);
 
     // 6. Bootstrap Crate Subsystems
     
@@ -68,30 +70,34 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         listen_port: master_config.zenoh_listen_port,
         target_amr_serials: master_config.target_amr_serials.clone(),
     };
-    
     start_telemetry_uplink(driver_config.clone(), &zenoh_session, redis_client.clone()).await?;
     start_command_downlink(driver_config, zenoh_session, redis_client.clone(), southbound_rx).await?;
     info!("🤖 Southbound driver background actors successfully mounted.");
 
-    // B. Start Northbound Enterprise MQTT Gateway Client Runtime
+    // B. Start East/West Industrial Peripheral Gateway Client
+    start_opc_ua_gateway(master_config.opc_ua_plc_url.clone(), peripheral_rx).await?;
+    info!("🏭 East/West OPC UA peripheral background worker active.");
+
+    // C. Start Northbound Enterprise MQTT Gateway Client Runtime
     let gateway_config = MqttGatewayConfig {
         broker_url: master_config.mqtt_broker_url.clone(),
         broker_port: master_config.mqtt_broker_port,
         protocol_version: master_config.vda5050_protocol_version.clone(),
         manufacturer_filter: master_config.client_manufacturer.clone(),
     };
-    
     let mqtt_client = start_mqtt_gateway(gateway_config, northbound_tx).await?;
     info!("🌐 Northbound gateway network event loops active.");
 
-    // C. Execute Core Business Engine Loop (Blocking Operational Call)
+// D. Execute Core Business Engine Loop
     info!("🧠 Transferring thread control blocks to transactional orchestration core...");
+    
     if let Err(err) = start_core_orchestrator(
         master_config,
         redis_client,
         mqtt_client,
         northbound_rx,
         southbound_tx,
+        peripheral_tx, // FIXED: Passed the live channel sender straight to the compute core
     ).await {
         error!("❌ Catastrophic runtime failure inside orchestrator core loops: {}", err);
         return Err(err);

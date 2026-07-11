@@ -17,3 +17,4 @@ redis = { version = "0.25", features = ["tokio-comp"] }
 zenoh = "1.0.0"
 rumqttc = "0.24"
 cdr = "0.2.4"
+async-opcua = { version = "0.18", features = ["client"] }

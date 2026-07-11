@@ -2,15 +2,19 @@
 
 use std::error::Error;
 use std::time::Duration;
-use log::{info, warn}; // FIXED: Removed unused error macro import
+use log::{info, warn, error};
 use rumqttc::AsyncClient;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::oneshot;
 use tokio::time::interval;
-use redis::AsyncCommands; // FIXED: Brought AsyncCommands trait into scope for hgetall
+use redis::AsyncCommands;
 
 use adapter_vda5050::NorthboundEvent;
 use adapter_vda5050::schema::{Vda5050State, AgvPosition, BatteryState, SafetyState};
 use driver_zenoh_ros2::SouthboundCommand;
+
+// Import the East/West channel types cleanly
+use adapter_opc_ua::PeripheralRequest;
 
 use crate::MasterSystemConfig;
 use crate::state_manager::{cache_active_goal, retrieve_cached_goal, set_pause_state};
@@ -22,31 +26,36 @@ pub async fn start_core_orchestrator(
     mqtt_client: AsyncClient,
     mut northbound_receiver: Receiver<NorthboundEvent>,
     southbound_sender: Sender<SouthboundCommand>,
+    peripheral_sender: Sender<PeripheralRequest>, // UPDATED: Mounted East/West sender handle
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    info!("🧠 [Core Engine] Transactional compute loops activated.");
+    info!("🧠 [Core Engine] Transactional compute loops activated with East/West interlocks.");
 
     let mut redis_conn = redis_client.get_multiplexed_tokio_connection().await?;
 
-    // TASK 1: Throttled Outbound VDA5050 State Broadcaster (5 Hz)
+    // TASK 1: Dynamic Outbound VDA5050 State Broadcaster (5 Hz)
     let bcast_client = mqtt_client.clone();
     let bcast_config = config.clone();
     let bcast_redis = redis_client.clone();
     
     tokio::spawn(async move {
         let mut report_timer = interval(Duration::from_millis(200));
-        let mut state_conn = bcast_redis.get_multiplexed_tokio_connection().await.unwrap();
+        let mut state_conn = match bcast_redis.get_multiplexed_tokio_connection().await {
+            Ok(conn) => conn,
+            Err(err) => {
+                error!("❌ [State Loop] Failed to spin up dedicated telemetry Redis pipeline: {}", err);
+                return;
+            }
+        };
         let mut header_counter: u64 = 0;
 
         loop {
             report_timer.tick().await;
             header_counter += 1;
 
-            // Iterate across all configured vehicles to construct individual state profiles dynamically
             for serial in &bcast_config.target_amr_serials {
                 let pose_key = format!("amr:{}:pose", serial);
                 let lifecycle_key = format!("amr:{}:lifecycle", serial);
 
-                // Fetch physical location metrics and configuration settings from Redis
                 let coords: std::collections::HashMap<String, String> = state_conn.hgetall(&pose_key).await.unwrap_or_default();
                 let lifecycle: std::collections::HashMap<String, String> = state_conn.hgetall(&lifecycle_key).await.unwrap_or_default();
 
@@ -62,7 +71,6 @@ pub async fn start_core_orchestrator(
                     .unwrap_or_default()
                     .as_secs();
 
-                // Build a strictly compliant, strongly typed VDA5050 state structure
                 let state_frame = Vda5050State {
                     header_id: header_counter,
                     timestamp: now_epoch,
@@ -75,7 +83,7 @@ pub async fn start_core_orchestrator(
                         map_id: bcast_config.warehouse_map_id.clone(),
                     },
                     battery_state: BatteryState {
-                        battery_charge: 100.0,
+                        battery_charge: 100.0, 
                         battery_voltage: 24.0,
                         charging_state: "DISCHARGING".to_string(),
                     },
@@ -108,16 +116,45 @@ pub async fn start_core_orchestrator(
     while let Some(event) = northbound_receiver.recv().await {
         match event {
             NorthboundEvent::OrderReceived { manufacturer: _, serial_number, order_id, x, y, theta } => {
-                info!("🧠 [Core Core] Routing path target [{}] validated for asset [{}]", order_id, serial_number);
+                info!("🧠 [Core Engine] Routing path target [{}] validated for asset [{}]", order_id, serial_number);
 
                 cache_active_goal(&serial_number, x, y, theta, &mut redis_conn).await;
 
+                // --- CONTEXT INTERLOCK SIMULATION ---
+                // If the coordinate matches a physical gate zone, execute a synchronous PLC handshake first!
+                if x > 20.0 { 
+                    warn!("🚧 [Interlock Zone] Target X coordinate ({}) requires clearance through automated gate Door_A1!", x);
+                    
+                    // Allocate an ephemeral oneshot synchronization portal
+                    let (tx, rx) = oneshot::channel();
+                    
+                    let request = PeripheralRequest::ClearHighSpeedDoor {
+                        door_id: "Door_A1".to_string(),
+                        responder_tx: tx,
+                    };
+
+                    // Send request down to the OPC UA crate worker
+                    if peripheral_sender.send(request).await.is_ok() {
+                        info!("⏳ [Core Engine] Holding Southbound command trace... awaiting PLC verification signal.");
+                        
+                        // Block safely until the OPC UA client resolves the future
+                        match rx.await {
+                            Ok(true) => info!("🔓 [Core Engine] PLC handshakes passed. Gate reported open! Releasing AMR."),
+                            _ => {
+                                error!("❌ [Core Engine] Interlock rejection! PLC reported hardware fault. Aborting route dispatch.");
+                                continue; // Skip routing this command to protect physical assets
+                            }
+                        }
+                    }
+                }
+
+                // Everything is clear or cleared—dispatch command down to Zenoh
                 let cmd = SouthboundCommand::NavigateToPose { serial_number, x, y, theta };
                 let _ = southbound_sender.send(cmd).await;
             }
 
             NorthboundEvent::InstantActionReceived { manufacturer: _, serial_number, action_id, action_type } => {
-                info!("🚨 [Core Core] Intercepted high-priority execution directive [{}] for asset [{}]", action_type, serial_number);
+                info!("🚨 [Core Engine] Intercepted high-priority execution directive [{}] for asset [{}]", action_type, serial_number);
 
                 match action_type.as_str() {
                     "pause" => {
@@ -144,7 +181,7 @@ pub async fn start_core_orchestrator(
                         let _ = southbound_sender.send(SouthboundCommand::PreemptAndHalt { serial_number }).await;
                     }
                     unhandled => {
-                        warn!("ℹ️ [Core Engine] Received unhandled enterprise action primitive token: '{}' (ID: {})", unhandled, action_id);
+                        warn!("ℹ [Core Engine] Received unhandled enterprise action primitive token: '{}' (ID: {})", unhandled, action_id);
                     }
                 }
             }
