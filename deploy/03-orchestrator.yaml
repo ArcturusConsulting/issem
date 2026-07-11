@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: issem-orchestrator
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: issem-core
+  template:
+    metadata:
+      labels:
+        app: issem-core
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: orchestrator
+        image: issem-orchestrator:latest
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - pidof
+            - issem_core
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: global-config
+          mountPath: /app/config.json
+        - name: pki-store
+          mountPath: /app/pki
+      volumes:
+      - name: global-config
+        hostPath:
+          path: /home/norrie/issem/config.json
+          type: File
+      - name: pki-store
+        hostPath:
+          path: /home/norrie/issem/pki
+          type: Directory

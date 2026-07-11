@@ -6,7 +6,7 @@
 [![Orchestration](https://img.shields.io/badge/orchestration-K3s%20%7C%20Kubernetes-blueviolet.svg)](https://k3s.io/)
 [![Database](https://img.shields.io/badge/state-Redis%20(Durable)-red.svg)](https://redis.io/)
 
-ISSEM is a centralized, high-performance, stateless server-side gateway written in pure Rust. It bridges the structural chasm between corporate **Warehouse Execution Systems (WES)** and agile, open-source **Autonomous Mobile Robots (AMRs)**. 
+ISSEM is a centralized, high-performance, stateless server-side gateway written in pure Rust. It bridges the chasm between corporate **Warehouse Execution Systems (WES)** and agile, open-source **Autonomous Mobile Robots (AMRs)**. 
 
 The framework intercepts industrial **VDA5050 JSON payloads over MQTT**, maps high-level coordination paths into localized navigation target frames, and pipes them down to the robot fleet using ultra-lean, sub-millisecond **Zenoh binary streams**. Telemetry tracking handles high-frequency (5 Hz+) localization arrays, synchronization states, and hardware overrides via a highly resilient, externalized **Redis** shared state layer.
 
@@ -18,7 +18,7 @@ The framework intercepts industrial **VDA5050 JSON payloads over MQTT**, maps hi
 
 In modern industrial logistics hubs (such as third-party logistics networks and heavy manufacturing plants in Japan), enterprise IT systems mandate strict **VDA5050 compliance over MQTT** to eliminate vendor lock-in. Conversely, modern AMRs run on highly dynamic, binary network graphs like **ROS 2 Jazzy and Zenoh/DDS**. 
 
-To meet the strict industrial mandate of **「止まらない現場」 (Tomaranai Genba — The Floor That Never Stops)**, ISSEM provides a **Centralized K3s Edge Orchestration pattern** designed to serve as a high-availability, low-footprint alternative to massive multi-vendor frameworks (like Open-RMF) in environments where the WES commands the automation layer directly.
+To meet the strict industrial mandate of **「止まらない現場」 (Tomaranai Gemba — The Floor That Never Stops)**, ISSEM provides a **Centralized K3s Edge Orchestration pattern** designed to serve as a high-availability, low-footprint alternative to massive multi-vendor frameworks (like Open-RMF) in environments where the WES commands the automation layer directly.
 
 ### Core Architecture Enhancements
 * **Off-Robot Stateless Compute:** Pulls protocol serialization overhead off the physical vehicles. AMRs communicate via lean, native binary streams over the air, saving edge CPU and battery capacity.
@@ -76,17 +76,17 @@ ISSEM functions as the centralized multi-tenant traffic router deployed on a loc
 #### A. Downlink Path Command (WES ──► Robot Fleet)
 1. **Ingestion:** An order packet arrives at `vda5050/3.0.0/manufacturer/serialNumber/order`.
 2. **Parsing & Mapping:** The VDA5050 module parses the target coordinates and target orientation angle (theta). It computes the target quaternion rotation variables:
-   * q_z = sin(theta / 2)
-   * q_w = cos(theta / 2)
+   * $q_z = \sin(\theta / 2)$
+   * $q_w = \cos(\theta / 2)$
 3. **State Verification:** The core checks the Redis status registry to ensure the specified AMR is not currently locked in a HARD e-stop state block.
 4. **Cache Backing:** The computed `PoseStamped` structure is stored in the persistent cache database.
 5. **Zenoh Injection:** The data is serialized into Common Data Representation (CDR) little-endian byte format and published over Zenoh to `{serialNumber}/goal_pose`.
 
 #### B. Uplink Telemetry Processing (Robot Fleet ──► WES)
 1. **High-Speed Catch:** The Zenoh driver captures binary localization arrays coming from the robot fleet at frequencies exceeding 5 Hz.
-2. **Euler Transformation:** The vehicle's quaternion components (q_x, q_y, q_z, q_w) are instantly converted to a planar radian yaw format (theta) for corporate ingestion:
-   * theta = atan2(2.0 * (q_w * q_z + q_x * q_y), 1.0 - 2.0 * (q_y * q_y + q_z * q_z))
-3. **Cache Sync:** The active location coordinates (x, y, theta) are updated in the Redis cluster using high-speed key-value overwrites.
+2. **Euler Transformation:** The vehicle's quaternion components ($q_x, q_y, q_z, q_w$) are instantly converted to a planar radian yaw format ($\theta$) for corporate ingestion:
+   * $\theta = \operatorname{atan2}(2.0 \cdot (q_w \cdot q_z + q_x \cdot q_y), 1.0 - 2.0 \cdot (q_y \cdot q_y + q_z \cdot q_z))$
+3. **Cache Sync:** The active location coordinates ($x, y, \theta$) are updated in the Redis cluster using high-speed key-value overwrites.
 4. **Throttled State Generation:** A background loop collects the current pose from Redis at a stabilized, throttled rate of 5 Hz, pairs it with battery and system metrics, builds a compliant VDA5050 state JSON structure, and publishes it back up to the enterprise MQTT broker.
 
 ### Deep Robotics Bottleneck Workarounds: Zero-Distance Preemption
@@ -124,8 +124,8 @@ To ensure strict separation of concerns and eliminate protocol compile-time inte
 
 * **`issem_core` (Transactional Engine Core):** The engine's transactional brain. It is entirely protocol-agnostic. It consumes internal Rust primitives passed through bounded memory channels and manages state updates via the Redis client abstraction.
 * **`adapter_vda5050` (Northbound Enterprise Gateway):** Owns the MQTT connection. Spawns an asynchronous `rumqttc` event loop to manage enterprise broker handshakes, ingests inbound string payloads, and validates structural semantics against the VDA5050 specification.
-* **`driver_zenoh_ros2` (Southbound Robotics Driver):** Owns the Zenoh session. Listens to high-speed binary streams, deserializes the CDR bytes (handling your nested `[[f64; 6]; 6]` covariance arrays natively, bypassing Serde's standard 32-element array constraint), and handles outgoing waypoint injection.
-* **`adapter_opc_ua` (East/West Peripheral Sync):** Hosts a high-speed asynchronous industrial OPC UA client stack to interface with factory PLCs. It handles physical hardware handshakes (e.g., elevators and conveyors) before letting an AMR complete a payload handover.
+* **`driver_zenoh_ros2` (Southbound Robotics Driver):** Owns the Zenoh session. Listens to high-speed binary streams, deserializes the CDR bytes (handling nested `[[f64; 6]; 6]` covariance arrays natively, bypassing Serde's standard 32-element array constraint), and handles outgoing waypoint injection.
+* **`adapter_opc_ua` (East/West Peripheral Sync):** Hosts a high-speed asynchronous industrial OPC UA client stack to interface with factory PLCs. It handles physical hardware handshakes (e.g., automated safety gates and conveyor lines) before letting an AMR complete a payload handover.
 
 ### Repository Directory Topology
 
@@ -135,9 +135,8 @@ issem_workspace/
 ├── redis.conf                      # Hyper-durable persistence configuration
 │
 ├── deploy/                         # Cloud-Native K3s Edge Manifests
-│   ├── deployment.yaml             # Stateless ISSEM core application pod setup
-│   ├── statefulset.yaml            # Durable Redis instance with PV storage
-│   └── service.yaml                # Internal cluster network routing definitions
+│   ├── 02-storage-tier.yaml        # Resilient Redis storage instance & service definitions
+│   └── 03-orchestrator.yaml        # Stateless ISSEM core engine deployment with host mounts
 │
 ├── issem_core/                     # Transactional Engine Core
 │   ├── Cargo.toml                  # Encapsulates redis driver (tokio-comp)
@@ -222,14 +221,14 @@ save 300 1
 * Construction of VDA5050 path target parsing and coordinate translation maps.
 * **Technical Achievement:** Isolated and resolved the 31-byte Fast-DDS history lockup vulnerability. Developed an asynchronous topic preemption layer that catches instant `pause` payloads, retains the true route targets inside local thread-safe boundaries, and injects zero-distance halt parameters to safely freeze the robot mid-transit. A subsequent `resume` re-injects the original target cleanly.
 
-### Phase 4: Shared State Externalization & Multi-Tenancy ── `[IN PROGRESS]`
-* Refactoring localized memory collections into a robust, concurrent `redis` async wrapper.
-* Keying global multi-tenant namespaces dynamically using unique AMR `{serialNumber}` paths extracted from routing topologies.
-* Designing a hyper-durable K3s edge configuration linking the stateless Rust application deployment to a persistent Redis StatefulSet backed by Append-Only File (AOF) disk sync writes every second.
+### Phase 4: Shared State Externalization & Multi-Tenancy ── `[COMPLETED]`
+* Refactored localized memory collections into a robust, concurrent `redis` async wrapper.
+* Keyed global multi-tenant namespaces dynamically using unique AMR `{serialNumber}` paths.
+* Integrated a hyper-durable K3s edge configuration linking the stateless Rust application deployment to an isolated Redis storage tier.
 
-### Phase 5: East/West Physical PLC Handshaking ── `[PLANNED]`
-* Building an active, asynchronous OPC UA client stack to interface with factory PLCs.
-* Programming automated safety handshakes (e.g., locking elevator cabs, verifying conveyor optical sensors) before allowing an AMR to release cargo waypoints.
+### Phase 5: East/West Physical PLC Handshaking ── `[COMPLETED]`
+* Built an active, asynchronous OPC UA client stack to interface with industrial factory PLCs.
+* Programmed automated safety handshakes (e.g., executing high-speed factory door bit-shifts for `Door_A1`) to clear zone interlocks before releasing AMR trajectories down to the ROS 2 southbound tier.
 
 ---
 
@@ -240,19 +239,19 @@ To run the complete stateless cloud-native suite in your local sandbox cluster e
 ### 1. Provision the Cluster Manifests
 Apply the declarative configurations to your running K3s engine. This builds your stateless compute pod and orchestrates your durable Redis storage mount:
 ```bash
-kubectl apply -f deploy/
+sudo k3s kubectl apply -f deploy/
 ```
 
 ### 2. Monitor Cluster Lifecycle
 Verify the initialization status of your distributed container pods:
 ```bash
-kubectl get pods -w
+sudo k3s kubectl get pods
 ```
 
 ### 3. Monitor Live Data Logs
 Attach to the application runtime log stream to watch the translation loops:
 ```bash
-kubectl logs -f deployment/issem-gateway
+sudo k3s kubectl logs -l app=issem-core --follow
 ```
 
 ### 4. Dispatch an Enterprise Command
@@ -279,6 +278,6 @@ mosquitto_pub -h localhost -p 1883 \
 ### 5. Inject a Node Failure (Resiliency Drill)
 Simulate a catastrophic hardware rack failure by deleting the running application pod mid-transit:
 ```bash
-kubectl delete pod -l app=issem-gateway
+sudo k3s kubectl delete pod -l app=issem-core
 ```
 *Observe that the cluster controller handles container failover immediately. A fresh instance initializes on an available thread slot, hits the live Redis storage cache, and resumes handling active AMR coordinates within 50 milliseconds with zero loss of execution history.*
