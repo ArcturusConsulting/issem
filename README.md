@@ -85,7 +85,7 @@ ISSEM functions as the centralized multi-tenant traffic router deployed on a loc
 #### B. Uplink Telemetry Processing (Robot Fleet ──► WES)
 1. **High-Speed Catch:** The Zenoh driver captures binary localization arrays coming from the robot fleet at frequencies exceeding 5 Hz.
 2. **Euler Transformation:** The vehicle's quaternion components ($q_x, q_y, q_z, q_w$) are instantly converted to a planar radian yaw format ($\theta$) for corporate ingestion:
-   * $\theta = \operatorname{atan2}(2.0 \cdot (q_w \cdot q_z + q_x \cdot q_y), 1.0 - 2.0 \cdot (q_y \cdot q_y + q_z \cdot q_z))$
+   $$\theta = \text{atan2}(2.0 \cdot (q_w \cdot q_z + q_x \cdot q_y), 1.0 - 2.0 \cdot (q_y \cdot q_y + q_z \cdot q_z))$$
 3. **Cache Sync:** The active location coordinates ($x, y, \theta$) are updated in the Redis cluster using high-speed key-value overwrites.
 4. **Throttled State Generation:** A background loop collects the current pose from Redis at a stabilized, throttled rate of 5 Hz, pairs it with battery and system metrics, builds a compliant VDA5050 state JSON structure, and publishes it back up to the enterprise MQTT broker.
 
@@ -135,6 +135,7 @@ issem_workspace/
 ├── redis.conf                      # Hyper-durable persistence configuration
 │
 ├── deploy/                         # Cloud-Native K3s Edge Manifests
+│   ├── 01-config.yaml
 │   ├── 02-storage-tier.yaml        # Resilient Redis storage instance & service definitions
 │   └── 03-orchestrator.yaml        # Stateless ISSEM core engine deployment with host mounts
 │
