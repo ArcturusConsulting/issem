@@ -2,7 +2,9 @@ name: Industrial Release Pipeline
 
 on:
   push:
-    branches: [ "main" ] # Triggers automatically whenever you push code to the main branch
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 # Explicit security permissions required to publish container images to GitHub Packages
 permissions:
