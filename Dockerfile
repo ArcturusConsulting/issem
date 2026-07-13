@@ -1,20 +1,24 @@
 # ==============================================================================
 # STAGE 1: Prepare the dependency recipes (Fast Caching)
 # ==============================================================================
-FROM rust:slim AS planner
+# UPDATED: Use the official pre-baked slim image
+FROM lukemathwalker/cargo-chef:latest-rust-slim AS planner
 WORKDIR /app
-RUN cargo install cargo-chef --version 0.1.66
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ==============================================================================
 # STAGE 2: Build and cache external dependencies with full compiler tools
 # ==============================================================================
-FROM rust:slim AS builder
+# UPDATED: Use the official pre-baked slim image here as well
+FROM lukemathwalker/cargo-chef:latest-rust-slim AS builder
 WORKDIR /app
+
 # Install necessary tools for underlying C/C++ industrial bindings
 RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake g++ && rm -rf /var/lib/apt/lists/*
-RUN cargo install cargo-chef --version 0.1.66
+
+# REMOVED: The manual cargo install cargo-chef command is completely gone!
+
 COPY --from=planner /app/recipe.json recipe.json
 # Pre-compile the exact workspace crate ecosystem dependency cache
 RUN cargo chef cook --release --recipe-path recipe.json
