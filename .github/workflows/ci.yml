@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [ "main" ]
 
-# Explicit security permissions required to publish container images to GitHub Packages
 permissions:
   contents: read
   packages: write
@@ -16,23 +15,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Pull down your repository code onto the cloud runner
     - name: Checkout Source Code
       uses: actions/checkout@v4
 
-    # 2. Set up a stable Rust compiler environment
     - name: Install Rust Toolchain
       uses: dtolnay/rust-toolchain@stable
 
-    # 3. Cache dependencies to speed up subsequent builds
     - name: Rust Dependency Cache
       uses: swatinem/rust-cache@v2
 
-    # 4. Verify that the multi-crate workspace compiles flawlessly
     - name: Run Compilation Check
       run: cargo check --workspace
 
-    # 5. Log into the GitHub Container Registry automatically using built-in system keys
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
       with:
@@ -40,8 +34,13 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # 6. Build your multi-stage Dockerfile and push it to private cloud vault
-    - name: Build and Push Enterprise Distroless Image
+    # NEW: Automatically extract the short 7-character Git Commit ID
+    - name: Extract Git Commit SHA
+      id: git_meta
+      run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+    # UPDATED: Tag the container with your semantic version + the unique commit SHA
+    - name: Build and Push Enterprise Container Image
       run: |
-        docker build -t ghcr.io/arcturusconsulting/issem-orchestrator:latest .
-        docker push ghcr.io/arcturusconsulting/issem-orchestrator:latest
+        docker build -t ghcr.io/arcturusconsulting/issem-orchestrator:v0.1.0-${{ env.SHORT_SHA }} .
+        docker push ghcr.io/arcturusconsulting/issem-orchestrator:v0.1.0-${{ env.SHORT_SHA }}
