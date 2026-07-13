@@ -43,6 +43,6 @@ fn test_pose_stamped_round_trip() {
     let restored = PoseStamped::from_cdr_bytes(&bytes).expect("Failed to deserialize PoseStamped");
 
     assert_eq!(restored.header.frame_id, "map");
-    assert_eq!(restored.pose.position.x = 12.5);
-    assert_eq!(restored.pose.orientation.w = 1.0);
+    assert_eq!(restored.pose.position.x, 12.5);
+    assert_eq!(restored.pose.orientation.w, 1.0);
 }

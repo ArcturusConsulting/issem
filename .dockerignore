@@ -1,0 +1,12 @@
+# Ignore local compilation outputs
+target/
+
+# Ignore Git history database
+.git/
+.gitignore
+
+# Ignore GitHub Actions configuration (CRITICAL)
+.github/
+
+# Ignore local Kubernetes deployment charts
+deploy/
