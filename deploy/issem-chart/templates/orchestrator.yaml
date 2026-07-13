@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: issem-orchestrator
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: issem-core
+  template:
+    metadata:
+      labels:
+        app: issem-core
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: orchestrator
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: ISSEM_PLC_ENDPOINT
+          value: {{ .Values.envOverrides.plcEndpoint | quote }}
+        - name: ISSEM_REDIS_URL
+          value: {{ .Values.envOverrides.redisUrl | quote }}
+        livenessProbe:
+          exec:
+            command:
+            - pidof
+            - issem_core
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: global-config
+          mountPath: /app/config.json # Cleaned: subPath removed
+        - name: pki-store
+          mountPath: /app/pki
+        - name: license-token
+          mountPath: /app/license.jwt # Cleaned: subPath removed
+      volumes:
+      - name: global-config
+        hostPath:
+          path: {{ .Values.hostPaths.configJson }}
+          type: File
+      - name: pki-store
+        hostPath:
+          path: {{ .Values.hostPaths.pkiDir }}
+          type: Directory
+      - name: license-token
+        hostPath:
+          path: {{ .Values.hostPaths.licenseJwt }}
+          type: File

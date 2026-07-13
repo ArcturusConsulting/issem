@@ -1,0 +1,13 @@
+[package]
+name = "driver_zenoh_ros2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Inherit centralized dependencies from the workspace root manifest
+serde = { workspace = true }
+cdr = { workspace = true }
+zenoh = { workspace = true }
+redis = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }

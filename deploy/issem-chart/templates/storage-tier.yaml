@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: issem-storage
+spec:
+  serviceName: "redis"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-tier
+  template:
+    metadata:
+      labels:
+        app: redis-tier
+    spec:
+      containers:
+      - name: redis
+        image: redis:7.2-alpine
+        command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+        ports:
+        - containerPort: 6379
+          name: redis-port

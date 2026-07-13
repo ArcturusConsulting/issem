@@ -1,0 +1,13 @@
+[package]
+name = "adapter_opc_ua"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+log = { workspace = true }
+async-opcua = { workspace = true, features = ["client"] }
+serde = { workspace = true, features = ["derive"] }
+
+[lib]
+path = "src/lib.rs"

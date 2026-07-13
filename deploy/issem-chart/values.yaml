@@ -1,0 +1,18 @@
+# Global settings for on-premise deployment
+replicaCount: 1
+
+image:
+  repository: issem-orchestrator
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Factory infrastructure endpoints
+envOverrides:
+  plcEndpoint: "opc.tcp://127.0.0.1:4840/"
+  redisUrl: "redis://127.0.0.1:6379"
+
+# Physical host paths on the client server rack
+hostPaths:
+  configJson: "/home/norrie/issem/config.json"
+  pkiDir: "/home/norrie/issem/pki"
+  licenseJwt: "/home/norrie/issem/license.jwt"

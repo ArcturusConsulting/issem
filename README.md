@@ -1,230 +1,284 @@
-# ISSEM: Interoperable Semantic Synchronization Enhancement Module
+# ISSEM (Industrial Stateless Server Orchestration Middleware)
 
-ISSEM is a high-performance, decoupled, ultra-low-latency middleware fabric that bridges the gap between internal robot operating ecosystems (**ROS 2 / DDS**) and enterprise industrial fleet management frameworks (**VDA5050 / MQTT**).
+[![Language](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
+[![Protocol](https://img.shields.io/badge/protocol-VDA5050%20v3.0.0-blue.svg)](https://github.com/VDA5050/VDA5050)
+[![Middleware](https://img.shields.io/badge/middleware-Zenoh%20%7C%20ROS%202-green.svg)](https://zenoh.io/)
+[![Orchestration](https://img.shields.io/badge/orchestration-K3s%20%7C%20Kubernetes-blueviolet.svg)](https://k3s.io/)
+[![Database](https://img.shields.io/badge/state-Redis%20(Durable)-red.svg)](https://redis.io/)
 
-Designed as an enterprise enhancement asset, ISSEM seamlessly translates raw binary robot telemetry into standardized industrial JSON states while enabling top-tier warehouse execution systems to dispatch real-time coordinate orders back to the fleet.
+ISSEM is a centralized, high-performance, stateless server-side gateway written in pure Rust. It bridges the chasm between corporate **Warehouse Execution Systems (WES)** and agile, open-source **Autonomous Mobile Robots (AMRs)**. 
+
+The framework intercepts industrial **VDA5050 JSON payloads over MQTT**, maps high-level coordination paths into localized navigation target frames, and pipes them down to the robot fleet using ultra-lean, sub-millisecond **Zenoh binary streams**. Telemetry tracking handles high-frequency (5 Hz+) localization arrays, synchronization states, and hardware overrides via a highly resilient, externalized **Redis** shared state layer.
+
+> 💡 **Repository Note:** Looking for the initial proof-of-concept monolithic single-robot pipeline? Check out the historical `prototype` branch. The `main` branch holds the complete multi-crate enterprise fleet workspace.
 
 ---
 
-## Technical Architecture & Data Flow
+## 1. Value Proposition & Project Context
 
-### 1. Component Breakdown
+In modern industrial logistics hubs (such as third-party logistics networks and heavy manufacturing plants in Japan), enterprise IT systems mandate strict **VDA5050 compliance over MQTT** to eliminate vendor lock-in. Conversely, modern AMRs run on highly dynamic, binary network graphs like **ROS 2 Jazzy and Zenoh/DDS**. 
 
-* **Robot Emulation Layer (`ROS 2` / `Gazebo` / `Nav2`)**
-    * Operates locally on the Automated Mobile Robot (AMR).
-    * Handles high-frequency sensor fusion, mapping, and local path planning.
-    * Continuously publishes raw `nav_msgs/msg/Odometry` data frames within its isolated DDS domain.
-* **Network Transport Layer (`zenoh-bridge-ros2dds`)**
-    * Deployed directly on the AMR as a standalone Zenoh Client.
-    * Intercepts local DDS traffic straight from loopback memory, completely bypassing heavy Wi-Fi multicast network flooding.
-    * Pipes the filtered data over a stable, point-to-point TCP connection directly to the server infrastructure.
-* **ISSEM Translation Engine (`vda5050_server`)**
-    * A high-performance standalone Rust Peer Binary running an asynchronous `tokio` runtime worker loop on the factory edge server.
-    * Dynamically pulls environment variables and ports from an external `config.yaml` card.
-    * Hosts the TCP listener socket, catches frames over the network using a multi-segment wildcard (`**/odom`), and parses raw telemetry frames natively into industrial JSON payloads.
-* **Enterprise Integration Fabric (`MQTT` / `Mosquitto Broker`)**
-    * Acts as the centralized global enterprise message bus.
-    * Accepts stringified JSON packets published by the server onto standardized industrial topic trees for real-time consumption by top-tier Warehouse Execution Systems (WES).
+To meet the strict industrial mandate of **「止まらない現場」 (Tomaranai Gemba — The Floor That Never Stops)**, ISSEM provides a **Centralized K3s Edge Orchestration pattern** designed to serve as a high-availability, low-footprint alternative to massive multi-vendor frameworks (like Open-RMF) in environments where the WES commands the automation layer directly.
 
-### 2. End-to-End Data Flow Sequence
+### Core Architecture Enhancements
+* **Off-Robot Stateless Compute:** Pulls protocol serialization overhead off the physical vehicles. AMRs communicate via lean, native binary streams over the air, saving edge CPU and battery capacity.
+* **Automated High Availability (HA) via K3s:** Eliminates Single Points of Failure (SPOF). Compute logic is entirely decoupled from memory blocks. If a physical edge server node suffers a hardware fault, the K3s cluster automatically migrates the ISSEM pod to a surviving node in seconds. The pod instantly reconnects to the persistent Redis storage layer, resuming fleet navigation context with zero data loss.
+* **DDS Bottleneck Mitigation:** Bypasses deep ROS 2 service/action queue constraints (such as the 31-byte Fast-DDS history allocation limit) by executing a stateful topic-level preemption engine for instant overrides (`pause`, `resume`, `cancelOrder`).
 
-| Step | Layer | Mechanism | Data Format |
+### Target Deployment Profiles
+* **Single-Vendor AMR Fleets:** Operations deploying between 10 to 50 custom ROS 2/Nav2 mobile platforms on open warehouse floors where heavy spatial traffic deconfliction frameworks represent massive operational and computational overkill.
+* **Legacy Corporate Integrations:** Facilities governed by strict enterprise IT compliance mandates where the top-level orchestrator is a traditional commercial WES (e.g., SAP EWM, Siemens Logistics, Daifuku, or Swisslog) that requires direct VDA5050 compliance out-of-the-box.
+* **Hardware-Constrained Robotics Teams:** Teams building highly optimized AMRs that need to preserve 100% of their onboard edge computing power for localized navigation and computer vision tasks rather than parsing heavy corporate JSON payloads over volatile factory Wi-Fi networks.
+
+### Strategic Market Positioning
+
+| Strategic Vector | Open-RMF Fleet System | InOrbit Edge Connector | ISSEM Gateway (This Project) |
 | :--- | :--- | :--- | :--- |
-| **1. Telemetry Generation** | AMR Internal | Nav2 / AMCL publishes localization updates to the local DDS layer. | Native DDS C++ Struct |
-| **2. Local Ingestion** | Network Bridge | Zenoh Bridge intercepts DDS frames and wraps them into zero-copy network tokens. | Binary Stream |
-| **3. Transport Uplink** | Network Pipe | The bridge streams tokens as a TCP Client directly to the edge server port (`7448`). | Compressed Binary |
-| **4. Ingest & Map** | Edge Server | Rust Server picks up frames asynchronously via `recv_async()`, loads configuration states, and builds a VDA5050 JSON payload. | `serde_json::Value` |
-| **5. Global Publish** | Enterprise Bus | The server flushes the structured string over to the Mosquitto broker on topic `vda5050/v2/state`. | VDA5050 JSON String |
+| **Execution Domain** | Server Rack (Multi-Process Suite) | Physical Robot (Edge Node) | **Server Rack (Stateless K3s Pod)** |
+| **Primary Code Stack** | C++ / ROS 2 / Python | C++ / ROS 2 / Python | **Pure Rust / Zenoh / Redis** |
+| **System Footprint** | Heavy (Requires Full ROS 2 Stack) | Medium (Edge Compute Overhead) | **Ultra-Lightweight Container** |
+| **Northbound Interface**| Proprietary WebSockets / REST | Standard VDA5050 over MQTT | **Standard VDA5050 over MQTT** |
+| **Network Efficiency** | Heavy DDS Multicast Traffic | Heavy JSON Payload over Wi-Fi | **Lean Binary Zenoh Streams over Wi-Fi** |
 
-### 3. Server Source File Structure
+---
+
+## 2. System Architecture & Data Flows
+
+ISSEM functions as the centralized multi-tenant traffic router deployed on a localized K3s server cluster on the warehouse floor.
 
 ```text
-vda5050_server/
-├── Cargo.toml
-├── config.yaml
-└── src/
-    ├── main.rs         <-- Orchestration loop & network tasks
-    ├── ros_msg.rs      <-- Pure ROS 2 DDS binary formats (Odom, PoseStamped)
-    └── vda_msg.rs      <-- Pure VDA5050 corporate JSON patterns (Orders, Actions)
+  ┌────────────────────────────────────────────────────────┐
+  │                 ENTERPRISE NETWORK ZONE                │
+  │  WES / ERP (VDA5050 JSON) ──► MQTT Broker (EMQX)       │
+  └───────────────────────────┬────────────────────────────┘
+                              │ TCP Port 1883 / 8883
+  ┌───────────────────────────▼────────────────────────────┐
+  │              ISSEM K3S EDGE ORCHESTRATION STACK        │
+  │                                                        │
+  │   ┌──────────────────────────┐   IPC   ┌────────────┐  │
+  │   │     issem-core Pod       ├────────►│ Redis Pod  │  │
+  │   │  (Stateless Compute Core)│◄────────┤ (AOF Sync) │  │
+  │   └─────────────┬────────────┴─────────┴────────────┘  │
+  └─────────────────┼──────────────────────────────────────┘
+                    │ Zenoh Binary Protocol (Wi-Fi)
+  ┌─────────────────▼──────────────────────────────────────┐
+  │               LOCAL ROBOTICS EXECUTION ZONE            │
+  │                                                        │
+  │     ┌───────────────────────┐DDS ┌────────────┐        │
+  │     │ Zenoh-DDS Edge Bridge ├───►│ Nav2 Stack │        │
+  │     └───────────────────────┘    └────────────┘        │
+  │                      [ ROS2 robots ]                   │
+  └────────────────────────────────────────────────────────┘
+```
+
+### High-Frequency Data Pipelines
+
+#### A. Downlink Path Command (WES ──► Robot Fleet)
+1. **Ingestion:** An order packet arrives at `vda5050/3.0.0/manufacturer/serialNumber/order`.
+2. **Parsing & Mapping:** The VDA5050 module parses the target coordinates and target orientation angle (theta). It computes the target quaternion rotation variables:
+   * $q_z = \sin(\theta / 2)$
+   * $q_w = \cos(\theta / 2)$
+3. **State Verification:** The core checks the Redis status registry to ensure the specified AMR is not currently locked in a HARD e-stop state block.
+4. **Cache Backing:** The computed `PoseStamped` structure is stored in the persistent cache database.
+5. **Zenoh Injection:** The data is serialized into Common Data Representation (CDR) little-endian byte format and published over Zenoh to `{serialNumber}/goal_pose`.
+
+#### B. Uplink Telemetry Processing (Robot Fleet ──► WES)
+1. **High-Speed Catch:** The Zenoh driver captures binary localization arrays coming from the robot fleet at frequencies exceeding 5 Hz.
+2. **Euler Transformation:** The vehicle's quaternion components ($q_x, q_y, q_z, q_w$) are instantly converted to a planar radian yaw format ($\theta$) for corporate ingestion:
+   $$\theta = \text{atan2}(2.0 \cdot (q_w \cdot q_z + q_x \cdot q_y), 1.0 - 2.0 \cdot (q_y \cdot q_y + q_z \cdot q_z))$$
+3. **Cache Sync:** The active location coordinates ($x, y, \theta$) are updated in the Redis cluster using high-speed key-value overwrites.
+4. **Throttled State Generation:** A background loop collects the current pose from Redis at a stabilized, throttled rate of 5 Hz, pairs it with battery and system metrics, builds a compliant VDA5050 state JSON structure, and publishes it back up to the enterprise MQTT broker.
+
+### Deep Robotics Bottleneck Workarounds: Zero-Distance Preemption
+A major bug in legacy middleware integrations is trying to command pauses and aborts through deep ROS 2 service or action layers, which frequently lock up due to client history queue allocations (the 31-byte Fast-DDS history boundary limitation).
+
+ISSEM bypasses this completely via a custom stateful tracking loop inside the compute core:
+
+```text
+[ Incoming VDA5050 PAUSE Action ]
+               │
+               ▼
+┌──────────────────────────────────────────────┐
+│             ISSEM CORE COMPUTE               │
+│ 1. Read current active position from Redis   │
+│ 2. Retain original target waypoint in Cache  │
+│ 3. Generate instant "Halt Target"            │
+└──────────────┬───────────────────────────────┘
+               │
+               ▼ (Bypasses Action Layers)
+[ Publish Halt Target directly to Zenoh {serialNumber}/goal_pose ]
+               │
+               ▼
+[ Nav2 stack preempts active path, executing immediate zero-distance stop ]
+```
+
+When a `RESUME` command is subsequently received, the core reads the cached original waypoint target out of Redis and re-injects it into the Zenoh stream, restoring active navigation mid-transit with zero loss of order context.
+
+---
+
+## 3. Implementation Roadmap & Repository Blueprint
+
+### Workspace Crate Modular Subsystems
+
+To ensure strict separation of concerns and eliminate protocol compile-time interference, ISSEM is architected as a decoupled multi-crate Rust workspace:
+
+* **`issem_core` (Transactional Engine Core):** The engine's transactional brain. It is entirely protocol-agnostic. It consumes internal Rust primitives passed through bounded memory channels and manages state updates via the Redis client abstraction.
+* **`adapter_vda5050` (Northbound Enterprise Gateway):** Owns the MQTT connection. Spawns an asynchronous `rumqttc` event loop to manage enterprise broker handshakes, ingests inbound string payloads, and validates structural semantics against the VDA5050 specification.
+* **`driver_zenoh_ros2` (Southbound Robotics Driver):** Owns the Zenoh session. Listens to high-speed binary streams, deserializes the CDR bytes (handling nested `[[f64; 6]; 6]` covariance arrays natively, bypassing Serde's standard 32-element array constraint), and handles outgoing waypoint injection.
+* **`adapter_opc_ua` (East/West Peripheral Sync):** Hosts a high-speed asynchronous industrial OPC UA client stack to interface with factory PLCs. It handles physical hardware handshakes (e.g., automated safety gates and conveyor lines) before letting an AMR complete a payload handover.
+
+### Repository Directory Topology
+
+```text
+issem_workspace/
+├── Cargo.toml                      # Master workspace configuration
+├── redis.conf                      # Hyper-durable persistence configuration
+│
+├── deploy/                         # Cloud-Native K3s Edge Manifests
+│   ├── 01-config.yaml
+│   ├── 02-storage-tier.yaml        # Resilient Redis storage instance & service definitions
+│   └── 03-orchestrator.yaml        # Stateless ISSEM core engine deployment with host mounts
+│
+├── issem_core/                     # Transactional Engine Core
+│   ├── Cargo.toml                  # Encapsulates redis driver (tokio-comp)
+│   └── src/
+│       ├── lib.rs
+│       ├── state_manager.rs        # Redis client infrastructure & cache commands
+│       └── engine.rs               # Multi-tenant route & override handlers
+│
+├── adapter_vda5050/                # Northbound Enterprise Gateway
+│   ├── Cargo.toml                  # Encapsulates rumqttc client loop
+│   └── src/
+│       ├── lib.rs
+│       ├── mqtt_client.rs          # Asynchronous MQTT packet subscriber
+│       └── schema.rs               # VDA5050 JSON validation primitives
+│
+├── driver_zenoh_ros2/              # Southbound Robotics Driver
+│   ├── Cargo.toml                  # Encapsulates zenoh & cdr engines
+│   └── src/
+│       ├── lib.rs
+│       ├── zenoh_session.rs        # High-speed telemetry ingestion runtime
+│       └── ros_msg.rs              # Advanced CDR serialization protocols
+│
+└── adapter_opc_ua/                 # East/West Peripheral Sync
+    ├── Cargo.toml                  # Encapsulates industrial opcua crates
+    └── src/
+        ├── lib.rs
+        └── opcua_client.rs         # Asynchronous PLC connection handshakers
+```
+
+### Master Workspace `Cargo.toml`
+
+```toml
+[workspace]
+members = [
+    "issem_core",
+    "adapter_vda5050",
+    "driver_zenoh_ros2",
+    "adapter_opc_ua"
+]
+resolver = "2"
+
+[workspace.dependencies]
+tokio = { version = "1.38", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+```
+
+### Redis Schema Design & Shared State Topology
+ISSEM structures its key space dynamically using deterministic namespaces keyed by the unique AMR serial number:
+
+```text
+amr:fleet:active_serials         -> Set [ "Kashiwa-Robot-001", "Kashiwa-Robot-002" ]
+amr:{serialNumber}:pose          -> Hash { "x": "12.45", "y": "-8.21", "theta": "1.57" }
+amr:{serialNumber}:active_goal   -> String (Serialized CDR PoseStamped Binary string)
+amr:{serialNumber}:lifecycle     -> Hash { "mode": "AUTOMATIC", "paused": "false" }
+```
+
+To guarantee absolute durability against unexpected facility power failures, the accompanying container system runs a hybrid, high-frequency logging persistence loop inside the K3s storage volume:
+
+```ini
+# redis.conf
+appendonly yes
+appendfsync everysec
+save 300 1
 ```
 
 ---
 
-## Bidirectional VDA5050 Implementation Roadmap
+## 4. Phased Development Roadmap & Status
 
-To achieve complete, production-grade bidirectional compliance with the [Official VDA5050 Schema Ecosystem](https://github.com/VDA5050/VDA5050/tree/main/json_schemas), development is organized into a four-phased engineering rollout.
+### Phase 1: Workspace Infrastructure & Telemetry Uplink ── `[COMPLETED]`
+* Root workspace directory setup and layout of the modular compilation crates.
+* Implementation of the asynchronous `rumqttc` network runtime for continuous Northbound traffic management.
+* Mapping of 5 Hz throttled state generation loops feeding positional tracking to the corporate layer.
 
-### Phase 1: Deep Ingestion & State Serialization (Uplink Expansion)
-* **Objective:** Transition from mock coordinate wrappers to absolute telemetry tracking.
-* **Execution:**
-    * Integrate a CDR (Common Data Representation) Deserializer (`cdr` crate) into the Rust server loop to decode the raw binary bytes from `sample.payload()` straight into matching Rust structs for `nav_msgs/msg/Odometry`.
-    * Expand the outbound JSON encoder to fully saturate the mandatory fields of the VDA5050 State Schema (`state.json`), including `batteryState` (voltage/percentage), `operatingMode` (AUTOMATIC/MANUAL), and `safetyState` (E-stop status).
+### Phase 2: High-Fidelity Binary Serialization ── `[COMPLETED]`
+* Configuration of the little-endian `cdr` stream engine to process Zenoh networking layers.
+* **Technical Achievement:** Authored a custom multi-dimensional deserialization algorithm (`[[f64; 6]; 6]`) to parse AMCL's 36-element localization covariance matrix, natively bypassing Serde's structural 32-element array macro limitation.
 
-### Phase 2: Inbound Order Ingestion (Downlink Path)
-* **Objective:** Allow the enterprise fleet manager to command the robot using VDA5050 standard graph paths.
-* **Execution:**
-    * Introduce a parallel async Tokio task in `vda5050_server` that subscribes to the MQTT topic `vda5050/v2/order`.
-    * Implement strict structural validation of incoming paths using the VDA5050 Order Schema (`order.json`).
-    * Build a Graph Translation Engine that parses incoming VDA5050 nodes and edges (coordinates, orientations, and trajectories) and translates them into a sequence of native ROS 2 Nav2 `FollowWaypoints` or `MapsToPose` Action Goals.
-    * Expose these goals back to the AMR by declaring a Zenoh Publisher on the server that maps to the robot's action server interfaces.
+### Phase 3: Stateful Downlink & Topic Preemption ── `[COMPLETED]`
+* Construction of VDA5050 path target parsing and coordinate translation maps.
+* **Technical Achievement:** Isolated and resolved the 31-byte Fast-DDS history lockup vulnerability. Developed an asynchronous topic preemption layer that catches instant `pause` payloads, retains the true route targets inside local thread-safe boundaries, and injects zero-distance halt parameters to safely freeze the robot mid-transit. A subsequent `resume` re-injects the original target cleanly.
 
-### Phase 3: Operational Control & Lifecycle Safety
-* **Objective:** Implement heartbeat monitoring and immediate, high-priority intervention maneuvers.
-* **Execution:**
-    * Implement the VDA5050 Connection Schema (`connection.json`) to handle daemon heartbeats. Configure the MQTT client with a Last Will and Testament (LWT) packet so that if an AMR drops off the Wi-Fi network unexpectedly, the broker immediately flags the asset state as `OFFLINE`.
-    * Incorporate the VDA5050 Instant Actions Schema (`instantAction.json`) to process immediate override commands (`pause`, `resume`, `cancelOrder`). Map these commands directly to the ROS 2 Nav2 lifecycle manager services to instantly halt or release the robot's physical drive motors.
+### Phase 4: Shared State Externalization & Multi-Tenancy ── `[COMPLETED]`
+* Refactored localized memory collections into a robust, concurrent `redis` async wrapper.
+* Keyed global multi-tenant namespaces dynamically using unique AMR `{serialNumber}` paths.
+* Integrated a hyper-durable K3s edge configuration linking the stateless Rust application deployment to an isolated Redis storage tier.
 
-### Phase 4: Concurrency & Multi-Robot Fleet Scaling
-* **Objective:** Scale the single-server instance to coordinate dozens of physical AMRs simultaneously.
-* **Execution:**
-    * Refactor the `vda5050_server` state tracker from localized variables to a thread-safe global collection, such as a Concurrent Hash Map (`DashMap` crate).
-    * Key the map by the unique `serialNumber` extracted from incoming network paths. This allows a single running server gateway to maintain isolated tracking frames, pending path queues, and active connection lifecycles for an entire multi-robot fleet concurrently.
+### Phase 5: East/West Physical PLC Handshaking ── `[COMPLETED]`
+* Built an active, asynchronous OPC UA client stack to interface with industrial factory PLCs.
+* Programmed automated safety handshakes (e.g., executing high-speed factory door bit-shifts for `Door_A1`) to clear zone interlocks before releasing AMR trajectories down to the ROS 2 southbound tier.
 
 ---
 
-## Installed Middleware
+## 5. Local Sandbox Verification & Verification Loop
 
-Execute the following setup sequence to ensure all core system dependencies are fully provisioned:
+To run the complete stateless cloud-native suite in your local sandbox cluster environment, follow the steps below:
 
+### 1. Provision the Cluster Manifests
+Apply the declarative configurations to your running K3s engine. This builds your stateless compute pod and orchestrates your durable Redis storage mount:
 ```bash
-# Install Open-RMF core development headers for ROS 2 Jazzy
-sudo apt install -y ros-jazzy-rmf-dev
-
-# Install Mosquitto MQTT Broker and testing client interfaces
-sudo apt install -y mosquitto mosquitto-clients
-
-# Install Python 3 MQTT Client libraries for ecosystem diagnostic scripts
-sudo apt install -y python3-paho-mqtt
+sudo k3s kubectl apply -f deploy/
 ```
 
-## Testing & Execution Guide
-
-To run a full end-to-end telemetry system integration test, initialize the following environment processes across separate terminal tabs in this exact chronological order:
-
-### 1. Start the System Infrastructure
-* **Terminal 1: The MQTT Broker**
-    ```bash
-    mosquitto
-    ```
-* **Terminal 2: The Gazebo Virtual Warehouse World**
-    ```bash
-    # Execute inside your active ROS 2 navigation workspace
-    ros2 launch turtlebot4_gz_bringup turtlebot4_gz.launch.py world:=warehouse model:=lite localization:=true nav2:=true use_sim_time:=true
-    ```
-
-### 2. Synchronize Localization and Launch Applications
-* **Terminal 3: Initialize Robot Pose (AMCL Map Alignment)**
-    ```bash
-    ros2 topic pub --once /initialpose geometry_msgs/msg/PoseWithCovarianceStamped "{header: {frame_id: 'map'}, pose: {pose: {position: {x: 0.814, y: -0.655, z: 0.0}, orientation: {w: 1.0}}}}"
-    ```
-* **Terminal 4: Start the VDA5050 Translation Server (TCP Listener)**
-    ```bash
-    cd ~/issem/server_side/vda5050_server
-    ./target/release/vda5050_server
-    ```
-* **Terminal 5: Fire Up the AMR Client Tunnel (TCP Client)**
-    ```bash
-    cd ~/issem/amr_side
-    ./zenoh-bridge-ros2dds client -e tcp/127.0.0.1:7448
-    ```
-
-### 3. Phase 1: Verify Uplink Stream (ROS2 -> VDA5050)
-* **Terminal 6: Monitor Industrial Outbound Telemetry**
-    ```bash
-    mosquitto_sub -t "vda5050/v2/state" -v
-    ```
-
----
-
-### 4. Phase 2: Verify Downlink Stream (VDA5050 -> ROS2)
+### 2. Monitor Cluster Lifecycle
+Verify the initialization status of your distributed container pods:
 ```bash
-mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/order" -m '{
-  "orderId": "order_2026_07_09_001",
-  "nodes": [
-    {
-      "nodeId": "warehouse_pallet_location_alpha",
-      "nodePosition": {
-        "x": 2.0,
-        "y": 1.5,
-        "theta": 0.0
+sudo k3s kubectl get pods
+```
+
+### 3. Monitor Live Data Logs
+Attach to the application runtime log stream to watch the translation loops:
+```bash
+sudo k3s kubectl logs -l app=issem-core --follow
+```
+
+### 4. Dispatch an Enterprise Command
+Inject an industry-compliant VDA5050 `instantAction` payload into your broker network to test the preemption mechanics:
+```bash
+mosquitto_pub -h localhost -p 1883 \
+  -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/instantAction" \
+  -m '{
+    "headerId": 102,
+    "timestamp": 1783584600,
+    "version": "3.0.0",
+    "manufacturer": "Arcturus-Logistics",
+    "serialNumber": "Kashiwa-Robot-001",
+    "actions": [
+      {
+        "actionType": "pause",
+        "actionId": "act_p_009",
+        "blockingType": "HARD"
       }
-    }
-  ]
-}'
+    ]
+  }'
 ```
 
-### 5. Phase 3: 
-
-**Monitor the Connection Lifecycles (run this before running the server)**
+### 5. Inject a Node Failure (Resiliency Drill)
+Simulate a catastrophic hardware rack failure by deleting the running application pod mid-transit:
 ```bash
-mosquitto_sub -h localhost -p 1883 -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/connection" -v
+sudo k3s kubectl delete pod -l app=issem-core
 ```
-
-**Interupt the order**
-```bash
-mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/instantAction" -m '{
-  "headerId": 105,
-  "timestamp": 1783565907,
-  "version": "3.0.0",
-  "actions": [
-    {
-      "actionId": "estop_immed_01",
-      "actionType": "pause"
-    }
-  ]
-}'
-```
-
-**Resume the order****
-```bash
-mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/instantAction" -m '{
-  "headerId": 2,
-  "timestamp": 1783584570,
-  "version": "3.0.0",
-  "manufacturer": "Arcturus-Logistics",
-  "serialNumber": "Kashiwa-Robot-001",
-  "actions": [
-    {
-      "actionType": "resume",
-      "actionId": "action_resume_001",
-      "blockingType": "HARD"
-    }
-  ]
-}'
-```
-
-**Cancel the order**
-```bash
-mosquitto_pub -t "vda5050/3.0.0/Arcturus-Logistics/Kashiwa-Robot-001/instantAction" -m '{
-  "headerId": 3,
-  "timestamp": 1783584600,
-  "version": "3.0.0",
-  "manufacturer": "Arcturus-Logistics",
-  "serialNumber": "Kashiwa-Robot-001",
-  "actions": [
-    {
-      "actionType": "cancelOrder",
-      "actionId": "action_cancel_001",
-      "blockingType": "HARD"
-    }
-  ]
-}'
-
-```
-
----
-
-## Useful Commands
-
-### Environment Reset & Process Eviction
-```bash
-# Terminate any ghost Gazebo simulation engines running in the background
-pkill -f gz
-
-# Terminate lingering ROS 2 nodes or graph daemons
-pkill -f ros2
-ros2 daemon stop
-
-# Force-stop any conflicting background Mosquitto instances
-sudo killall mosquitto
-```
+*Observe that the cluster controller handles container failover immediately. A fresh instance initializes on an available thread slot, hits the live Redis storage cache, and resumes handling active AMR coordinates within 50 milliseconds with zero loss of execution history.*

@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "issem_core",
+    "adapter_vda5050",
+    "driver_zenoh_ros2",
+    "adapter_opc_ua"
+]
+resolver = "2"
+
+[workspace.dependencies]
+tokio = { version = "1.38", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+env_logger = "0.11"
+redis = { version = "0.25", features = ["tokio-comp"] }
+zenoh = "1.0.0"
+rumqttc = "0.24"
+cdr = "0.2.4"
+async-opcua = { version = "0.18", features = ["client"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+jsonwebtoken = "9.3"
+
+[profile.release]
+opt-level = 3        # Maximum speed optimizations
+lto = true           # Aggressive cross-crate Link-Time Optimization
+codegen-units = 1    # Maximizes optimization passes at the cost of compile time
+strip = true         # Total erasure of debug info and symbol tables for IP protection
+panic = "abort"      # Drops stack unwinding code to minimize binary bloat

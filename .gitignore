@@ -1,15 +1,19 @@
+# === Cargo Workspace Blocks ===
+# Ignore the centralized workspace target directory at the root
+/target/
+
+# Ignore any legacy or nested cargo build directories
+**/target/
+
 # === AMR Side Block ===
-# Ignore the downloaded 3rd party network bridge binary executable
-amr_side/zenoh-bridge-ros2dds
-amr_side/*.tar.gz
-amr_side/*.so
+# Ignore compiled/downloaded binary executables specifically
+amr_side/*
+# (Uncomment below if you want to keep scripts but ignore everything else safely)
+# !amr_side/**/*.py
+# !amr_side/**/*.yaml
 
 # === Server Side Block ===
-# Ignore the massive Cargo compilation output directory (rebuilt locally)
-server_side/vda5050_server/target/
-
 # Ignore your compiled shared machine asset in the running directory
-# (It gets regenerated every time you run cargo build)
 server_side/operators/libvda5050_mapper.so
 
 # === System & IDE Garbage ===
@@ -17,3 +21,4 @@ server_side/operators/libvda5050_mapper.so
 .vscode/
 .idea/
 *.swp
+*.log

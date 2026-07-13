@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: issem-orchestrator
+  namespace: default
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: issem-core
+  template:
+    metadata:
+      labels:
+        app: issem-core
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: orchestrator
+        image: issem-orchestrator:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: ISSEM_PLC_ENDPOINT
+          value: "opc.tcp://127.0.0.1:4840/"
+        - name: ISSEM_REDIS_URL
+          value: "redis://127.0.0.1:6379"
+        livenessProbe:
+          exec:
+            command:
+            - pidof
+            - issem_core
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: global-config
+          mountPath: /app/config.json
+          subPath: config.json
+        - name: pki-store
+          mountPath: /app/pki
+          
+        # ADD THIS VOLUME MOUNT FOR THE LICENSE FILE:
+        - name: license-token
+          mountPath: /app/license.jwt
+          subPath: license.jwt
+
+      volumes:
+      - name: global-config
+        hostPath:
+          path: /home/norrie/issem/config.json
+          type: File
+      - name: pki-store
+        hostPath:
+          path: /home/norrie/issem/pki
+          type: Directory
+          
+      # ADD THIS VOLUME SPECIFICATION FOR THE LICENSE FILE:
+      - name: license-token
+        hostPath:
+          path: /home/norrie/issem/license.jwt
+          type: File

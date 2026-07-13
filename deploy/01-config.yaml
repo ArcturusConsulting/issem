@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: issem-config
+  namespace: default
+data:
+  config.json: |
+    {
+      "fleet": [
+        "Kashiwa-Robot-001",
+        "Kashiwa-Robot-002",
+        "Kashiwa-Robot-003"
+      ]
+    }
