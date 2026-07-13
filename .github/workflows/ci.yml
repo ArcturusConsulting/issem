@@ -1,0 +1,45 @@
+name: Industrial Release Pipeline
+
+on:
+  push:
+    branches: [ "main" ] # Triggers automatically whenever you push code to the main branch
+
+# Explicit security permissions required to publish container images to GitHub Packages
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Pull down your repository code onto the cloud runner
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    # 2. Set up a stable Rust compiler environment
+    - name: Install Rust Toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    # 3. Cache dependencies to speed up subsequent builds
+    - name: Rust Dependency Cache
+      uses: swatinem/rust-cache@v2
+
+    # 4. Verify that the multi-crate workspace compiles flawlessly
+    - name: Run Compilation Check
+      run: cargo check --workspace
+
+    # 5. Log into the GitHub Container Registry automatically using built-in system keys
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # 6. Build your multi-stage Dockerfile and push it to your private cloud vault
+    - name: Build and Push Enterprise Distroless Image
+      run: |
+        docker build -t ghcr.io/ArcturusConsulting/issem-orchestrator:latest .
+        docker push ghcr.io/ArcturusConsulting/issem-orchestrator:latest
