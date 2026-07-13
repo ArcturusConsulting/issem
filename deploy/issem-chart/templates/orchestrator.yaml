@@ -2,9 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: issem-orchestrator
-  namespace: default
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   strategy:
     type: Recreate
   selector:
@@ -19,13 +18,13 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: orchestrator
-        image: issem-orchestrator:latest
-        imagePullPolicy: IfNotPresent
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
         - name: ISSEM_PLC_ENDPOINT
-          value: "opc.tcp://127.0.0.1:4840/"
+          value: {{ .Values.envOverrides.plcEndpoint | quote }}
         - name: ISSEM_REDIS_URL
-          value: "redis://127.0.0.1:6379"
+          value: {{ .Values.envOverrides.redisUrl | quote }}
         livenessProbe:
           exec:
             command:
@@ -35,28 +34,21 @@ spec:
           periodSeconds: 10
         volumeMounts:
         - name: global-config
-          mountPath: /app/config.json
-          subPath: config.json
+          mountPath: /app/config.json # Cleaned: subPath removed
         - name: pki-store
           mountPath: /app/pki
-          
-        # ADD THIS VOLUME MOUNT FOR THE LICENSE FILE:
         - name: license-token
-          mountPath: /app/license.jwt
-          subPath: license.jwt
-
+          mountPath: /app/license.jwt # Cleaned: subPath removed
       volumes:
       - name: global-config
         hostPath:
-          path: /home/norrie/issem/config.json
+          path: {{ .Values.hostPaths.configJson }}
           type: File
       - name: pki-store
         hostPath:
-          path: /home/norrie/issem/pki
+          path: {{ .Values.hostPaths.pkiDir }}
           type: Directory
-          
-      # ADD THIS VOLUME SPECIFICATION FOR THE LICENSE FILE:
       - name: license-token
         hostPath:
-          path: /home/norrie/issem/license.jwt
+          path: {{ .Values.hostPaths.licenseJwt }}
           type: File

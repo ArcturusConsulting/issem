@@ -1,5 +1,5 @@
 # ==============================================================================
-# STAGE 1: Prepare the dependency recipes
+# STAGE 1: Prepare the dependency recipes (Fast Caching)
 # ==============================================================================
 FROM rust:slim AS planner
 WORKDIR /app
@@ -8,36 +8,34 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ==============================================================================
-# STAGE 2: Build and cache external dependencies
+# STAGE 2: Build and cache external dependencies with full compiler tools
 # ==============================================================================
 FROM rust:slim AS builder
 WORKDIR /app
+# Install necessary tools for underlying C/C++ industrial bindings
 RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake g++ && rm -rf /var/lib/apt/lists/*
 RUN cargo install cargo-chef --version 0.1.66
 COPY --from=planner /app/recipe.json recipe.json
-# Build our external crate cache dependencies layer cleanly
+# Pre-compile the exact workspace crate ecosystem dependency cache
 RUN cargo chef cook --release --recipe-path recipe.json
 
-# Copy the actual project logic layers over
+# Copy the actual project source tree logic layers over
 COPY . .
 # Perform the final system release build compilation sweep
 RUN cargo build --release --bin issem_core
 
 # ==============================================================================
-# STAGE 3: Minimal, high-security execution runtime footprint
+# STAGE 3: Hardened, Distroless Commercial Execution Runtime
 # ==============================================================================
-FROM debian:bookworm-slim AS runtime
+FROM gcr.io/distroless/cc-debian12:latest AS runtime
 WORKDIR /app
 
-# Install standard SSL roots for secure network configurations
-RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
-
-# Copy the optimized binary over from the builder target mirror
+# Copy the optimized, completely stripped binary from the builder layer
 COPY --from=builder /app/target/release/issem_core /app/issem_core
-COPY config.json /app/config.json
 
-# Establish environment log variables and expose target Zenoh listener portals
+# Establish production environment log variables and expose target Zenoh listener portals
 ENV RUST_LOG=info
 EXPOSE 7447
 
+# Execute the binary directly (no shell wrapper available)
 ENTRYPOINT ["/app/issem_core"]

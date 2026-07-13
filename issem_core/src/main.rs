@@ -4,7 +4,9 @@
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
-use log::{info, error};
+use log::{info, error, warn};
+use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use serde::Deserialize;
 
 use issem_core::MasterSystemConfig;
 use issem_core::state_manager::initialize_fleet_registry;
@@ -17,18 +19,55 @@ use driver_zenoh_ros2::ZenohDriverConfig;
 use driver_zenoh_ros2::telemetry::start_telemetry_uplink;
 use driver_zenoh_ros2::command::start_command_downlink;
 
-// Mount East/West client dependencies
 use adapter_opc_ua::start_opc_ua_gateway;
+
+/// The structural layout of your commercial software license payload
+#[derive(Debug, Deserialize)]
+struct LicenseClaims {
+    iss: String,          // Issuer (e.g., "Furukawa Robotics Consulting")
+    sub: String,          // Customer Name
+    exp: i64,             // Expiration timestamp
+    max_amr_fleet: usize, // Hard ceiling for authorized robot counts
+}
+
+// Hardcoded Cryptographic Public Key (Used to verify your signatures)
+const PUBLIC_KEY_PEM: &[u8] = b"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA927R2wZpL7oWq1C6E2k3B9f+F1XhQ12vY1n4eM8uJ3s=\n-----END PUBLIC KEY-----";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // 1. Initialize System Logger
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
-    }
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .json()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     info!("🚀 Initializing ISSEM Framework (Industrial Stateless Server Orchestration Middleware)...");
+
+    // ==============================================================================
+    // NEW: ENTERPRISE LICENSING GATEWAY BLOCK
+    // ==============================================================================
+    info!("🔑 Validating production runtime activation license token...");
+    
+    let mut license_file = File::open("license.jwt").map_err(|_| {
+        "Licensing Fault: Cryptographic token validation failed! Missing required 'license.jwt' registration block."
+    })?;
+    let mut jwt_token = String::new();
+    license_file.read_to_string(&mut jwt_token)?;
+    let jwt_token = jwt_token.trim();
+
+    // Decode and verify the cryptographic signature using Ed25519
+    let decoding_key = DecodingKey::from_ed_pem(PUBLIC_KEY_PEM)?;
+    let mut validation = Validation::new(Algorithm::EdDSA);
+    validation.validate_exp = true; // Enforces the token expiration date check automatically
+
+    let token_data = decode::<LicenseClaims>(&jwt_token, &decoding_key, &validation)
+        .map_err(|err| {
+            warn!("❌ Cryptographic Signature Check Failed: License altered or signature invalid.");
+            err
+        })?;
+
+    let claims = token_data.claims;
+    info!("✅ License verified successfully for client asset: [{}]. Issued by: {}. Expiry timestamp: {}", claims.sub, claims.iss, claims.exp);    // ==============================================================================
 
     // 2. Ingest Integrated Configuration Map
     let mut config_file = File::open("config.json")
@@ -36,8 +75,25 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut config_raw = String::new();
     config_file.read_to_string(&mut config_raw)?;
     
-    let master_config: MasterSystemConfig = serde_json::from_str(&config_raw)?;
-    info!("⚙️ Global deployment config parsed successfully. Target fleet count: {}", master_config.target_amr_serials.len());
+    let mut master_config: MasterSystemConfig = serde_json::from_str(&config_raw)?;
+
+    // Enforce maximum robot count authorized by the cryptographic license allocation
+    if master_config.target_amr_serials.len() > claims.max_amr_fleet {
+        error!("❌ Licensing Breach: Requested fleet count ({}) exceeds authorized license limit ({}). System halting.", 
+            master_config.target_amr_serials.len(), claims.max_amr_fleet);
+        return Err("Licensing Boundary Violation".into());
+    }
+
+    if let Ok(env_redis) = std::env::var("ISSEM_REDIS_URL") {
+        info!("🔄 On-Premise Override: Applying Redis target state storage URL from environment cluster config.");
+        master_config.redis_connection_url = env_redis;
+    }
+    if let Ok(env_plc) = std::env::var("ISSEM_PLC_ENDPOINT") {
+        info!("🔄 On-Premise Override: Applying East/West PLC endpoint path from environment network config.");
+        master_config.opc_ua_plc_url = env_plc;
+    }
+
+    info!("⚙️ Global deployment config processed successfully. Target fleet count: {}", master_config.target_amr_serials.len());
 
     // 3. Establish External Shared State Tier (Redis)
     info!("🗄️ Connecting to durable shared storage tier at {}...", master_config.redis_connection_url);
@@ -58,13 +114,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // 5. Allocate Inter-Crate Bounded Communication Pipelines (MPSC)
     let (northbound_tx, northbound_rx) = tokio::sync::mpsc::channel(100);
     let (southbound_tx, southbound_rx) = tokio::sync::mpsc::channel(100);
-    
-    // Allocate the East/West pipeline queue to feed instructions down to PLCs
     let (peripheral_tx, peripheral_rx) = tokio::sync::mpsc::channel(100);
 
     // 6. Bootstrap Crate Subsystems
-    
-    // A. Start Southbound Robotics Driver Workers
     let driver_config = ZenohDriverConfig {
         listen_host: master_config.zenoh_listen_host.clone(),
         listen_port: master_config.zenoh_listen_port,
@@ -74,11 +126,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     start_command_downlink(driver_config, zenoh_session, redis_client.clone(), southbound_rx).await?;
     info!("🤖 Southbound driver background actors successfully mounted.");
 
-    // B. Start East/West Industrial Peripheral Gateway Client
     start_opc_ua_gateway(master_config.opc_ua_plc_url.clone(), peripheral_rx).await?;
     info!("🏭 East/West OPC UA peripheral background worker active.");
 
-    // C. Start Northbound Enterprise MQTT Gateway Client Runtime
     let gateway_config = MqttGatewayConfig {
         broker_url: master_config.mqtt_broker_url.clone(),
         broker_port: master_config.mqtt_broker_port,
@@ -88,7 +138,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mqtt_client = start_mqtt_gateway(gateway_config, northbound_tx).await?;
     info!("🌐 Northbound gateway network event loops active.");
 
-// D. Execute Core Business Engine Loop
     info!("🧠 Transferring thread control blocks to transactional orchestration core...");
     
     if let Err(err) = start_core_orchestrator(
@@ -97,7 +146,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         mqtt_client,
         northbound_rx,
         southbound_tx,
-        peripheral_tx, // FIXED: Passed the live channel sender straight to the compute core
+        peripheral_tx,
     ).await {
         error!("❌ Catastrophic runtime failure inside orchestrator core loops: {}", err);
         return Err(err);
