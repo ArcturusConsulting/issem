@@ -38,8 +38,8 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # 6. Build your multi-stage Dockerfile and push it to your private cloud vault
+    # 6. Build your multi-stage Dockerfile and push it to private cloud vault
     - name: Build and Push Enterprise Distroless Image
       run: |
-        docker build -t ghcr.io/ArcturusConsulting/issem-orchestrator:latest .
-        docker push ghcr.io/ArcturusConsulting/issem-orchestrator:latest
+        docker build -t ghcr.io/arcturusconsulting/issem-orchestrator:latest .
+        docker push ghcr.io/arcturusconsulting/issem-orchestrator:latest
