@@ -2,6 +2,7 @@ name: Industrial Release Pipeline
 
 on:
   push:
+    contents: read
     branches: [ "main" ]
 
 permissions:
