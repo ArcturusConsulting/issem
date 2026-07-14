@@ -3,11 +3,11 @@ name: Industrial Release Pipeline
 on:
   push:
     branches: [ "main" ]
-    tags: [ "v*.*.*" ]
+    tags: [ "v*.*.*" ] # Triggers the build whenever you push a version tag
 
 permissions:
   contents: read
-  packages: write
+  packages: write  # No more "contents: write" needed!
 
 jobs:
   build-and-publish:
@@ -15,33 +15,16 @@ jobs:
 
     steps:
     - name: Checkout Source Code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GH_PAT }}
-        fetch-depth: 0
+      uses: actions/checkout@v4 # Kept standard and parameterless, exactly how you had it
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    # Install Helm on the build runner
     - name: Install Helm
       uses: azure/setup-helm@v4
       with:
         version: 'v3.12.0'
-
-    - name: Parse Semantic Version from Git Metadata
-      id: parse_version
-      run: |
-        echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-        
-        if [[ "${{ github.ref_type }}" == "tag" ]]; then
-          CLEAN_VERSION=${{ github.ref_name }}
-          CLEAN_VERSION=${CLEAN_VERSION#v}
-          echo "APP_VERSION=$CLEAN_VERSION" >> $GITHUB_ENV
-          echo "IS_RELEASE=true" >> $GITHUB_ENV
-        else
-          echo "APP_VERSION=0.0.0-snapshot" >> $GITHUB_ENV
-          echo "IS_RELEASE=false" >> $GITHUB_ENV
-        fi
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
@@ -50,11 +33,32 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    # Dynamically extract Git metadata (Commit SHA & Tag Version)
+    - name: Extract Dynamic Version and Git Commit SHA
+      id: version_meta
+      run: |
+        echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+        
+        # Check if this pipeline run was triggered by a Git Tag release
+        if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          # Strip the leading 'v' (e.g., v0.1.0 becomes 0.1.0)
+          CLEAN_VERSION=${{ github.ref_name }}
+          CLEAN_VERSION=${CLEAN_VERSION#v}
+          echo "APP_VERSION=$CLEAN_VERSION" >> $GITHUB_ENV
+          echo "IS_RELEASE=true" >> $GITHUB_ENV
+        else
+          # Fallback configuration for normal commits pushed directly to the main branch
+          echo "APP_VERSION=0.0.0-snapshot" >> $GITHUB_ENV
+          echo "IS_RELEASE=false" >> $GITHUB_ENV
+        fi
+
+    # 1. Build and Push the App Container
     - name: Build and Push Enterprise Container Image
       uses: docker/build-push-action@v6
       with:
         context: .
         push: true
+        # Dynamically applies versions. If it's a real tag release, it adds the absolute tag and :latest as well.
         tags: |
           ghcr.io/arcturusconsulting/issem-orchestrator:${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}
           ${{ env.IS_RELEASE == 'true' && format('ghcr.io/arcturusconsulting/issem-orchestrator:{0}', env.APP_VERSION) || '' }}
@@ -62,12 +66,16 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    # 2. Package and Push the Helm Chart as an OCI Package
     - name: Publish Helm Chart to GHCR
       run: |
+        # Log Helm client into GHCR
         echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
         
+        # Package the chart, dynamically injecting the versions matching our container tags
         helm package deploy/issem-chart \
           --version "${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}" \
           --app-version "${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}"
           
+        # Push the packaged chart package to our OCI registry space (aligned with issem-gateway output name)
         helm push issem-gateway-${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}.tgz oci://ghcr.io/arcturusconsulting
