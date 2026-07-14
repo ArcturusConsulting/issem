@@ -1,16 +1,15 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: issem-orchestrator
+  name: issem-gateway
   namespace: argocd
 spec:
   project: default
 
   source:
-    chart: issem-chart
-    repoURL: oci://ghcr.io/arcturusconsulting
-    # Tracks any automatic patch updates within the 0.1.x life cycle
-    targetRevision: ^0.1.0 
+    repoURL: ghcr.io/arcturusconsulting
+    chart: issem-gateway
+    targetRevision: 0.0.0-snapshot-46f1357
 
   destination:
     server: 'https://kubernetes.default.svc'
