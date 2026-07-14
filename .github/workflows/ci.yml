@@ -11,7 +11,17 @@ permissions:
   packages: write
 
 jobs:
-  build-and-publish:
+  build-and-publish:Run git config --global user.name "github-actions[bot]"
+10
+[detached HEAD b07ed96] ci: update image tag to v0.1.0-f48d3f6 [skip ci]
+11
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+12
+error: src refspec main does not match any
+13
+error: failed to push some refs to 'https://github.com/ArcturusConsulting/issem'
+14
+Error: Process completed with exit code 1.
     runs-on: ubuntu-latest
 
     steps:
