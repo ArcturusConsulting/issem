@@ -282,3 +282,79 @@ Simulate a catastrophic hardware rack failure by deleting the running applicatio
 sudo k3s kubectl delete pod -l app=issem-core
 ```
 *Observe that the cluster controller handles container failover immediately. A fresh instance initializes on an available thread slot, hits the live Redis storage cache, and resumes handling active AMR coordinates within 50 milliseconds with zero loss of execution history.*
+
+## 6. Production Deployment & Cluster Installation
+
+This section details the step-by-step setup required to provision a clean enterprise host edge server rack running a standard Linux distribution (e.g., Ubuntu LTS) from absolute scratch.
+
+### 1. Provision the Edge Kubernetes Engine (K3s)
+Install the lightweight, production-grade Kubernetes runtime directly onto the host server node. This script automatically configures container runtimes, networking layers, and local storage providers:
+
+```bash
+# Download and install K3s
+curl -sfL https://get.k3s.io | sh -
+
+# Verify the local node transitions to a 'Ready' state
+sudo k3s kubectl get nodes
+```
+
+### 2. Deploy the GitOps Controller (Argo CD)
+Install the continuous delivery operator inside an isolated management namespace within the cluster:
+
+```bash
+# Create the dedicated namespace
+sudo k3s kubectl create namespace argocd
+
+# 2. Execute the deployment using the server-side validation flag
+sudo k3s kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Monitor deployment until all pods report a 'Running' status
+sudo k3s kubectl get pods -n argocd --watch
+```
+
+### 3. Inject Secure B2B Client Access Credentials
+To allow the edge cluster to fetch your private Helm chart topologies and private container images from GitHub Packages without exposing your master account, inject the scoped, read-only Personal Access Token (PAT) directly into the secure cluster memory:
+
+```bash
+# 1. Create the credential mapping secret for Git access
+sudo k3s kubectl create secret generic issem-repo-credential \
+  --namespace argocd \
+  --from-literal=type=git \
+  --from-literal=url=https://github.com/ArcturusConsulting/issem.git \
+  --from-literal=username=ArcturusConsulting \
+  --from-literal=password=YOUR_FINE_GRAINED_READ_ONLY_TOKEN
+
+# 2. Label the secret object so Argo CD targets it for repository authentication
+sudo k3s kubectl label secret issem-repo-credential \
+  --namespace argocd \
+  argocd.argoproj.io/secret-type=repository
+
+# 3. Inject the matching Docker Registry credential to pull private images from GHCR
+sudo k3s kubectl create secret docker-registry ghcr-auth \
+  --docker-server=ghcr.io \
+  --docker-username=ArcturusConsulting \
+  --docker-password=YOUR_FINE_GRAINED_READ_ONLY_TOKEN \
+  --namespace default
+```
+
+### 4. Initialize the Master GitOps Control Application
+Apply the root application manifest from your deployment folder to initiate the cluster pull engine:
+
+```bash
+sudo k3s kubectl apply -f deploy/argo-application.yaml
+```
+
+### 5. Access the Local Management Console
+To monitor application health states visually, retrieve the secure access token and expose the dashboard layout:
+
+```bash
+# Retrieve the auto-generated admin password
+sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+
+# Establish a secure port-forward tunnel to access the UI locally
+sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Find the password to access Argo
+sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+```
+Open a browser tab and navigate to `https://localhost:8080` (Username: `admin`) to view the running container tree.
