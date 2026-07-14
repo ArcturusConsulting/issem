@@ -16,6 +16,8 @@ spec:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
+      imagePullSecrets:
+      - name: ghcr-auth
       containers:
       - name: orchestrator
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
