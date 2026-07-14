@@ -276,14 +276,7 @@ mosquitto_pub -h localhost -p 1883 \
   }'
 ```
 
-### 5. Inject a Node Failure (Resiliency Drill)
-Simulate a catastrophic hardware rack failure by deleting the running application pod mid-transit:
-```bash
-sudo k3s kubectl delete pod -l app=issem-core
-```
-*Observe that the cluster controller handles container failover immediately. A fresh instance initializes on an available thread slot, hits the live Redis storage cache, and resumes handling active AMR coordinates within 50 milliseconds with zero loss of execution history.*
-
-## 6. Production Deployment & Cluster Installation
+## 5. Production Deployment & Cluster Installation
 
 This section details the step-by-step setup required to provision a clean enterprise host edge server rack running a standard Linux distribution (e.g., Ubuntu LTS) from absolute scratch.
 
@@ -321,19 +314,23 @@ sudo k3s kubectl create secret generic private-ghcr-helm \
   --namespace argocd \
   --from-literal=type=helm \
   --from-literal=name=ghcr-oci \
-  --from-literal=url=oci://ghcr.io/arcturusconsulting \
+  --from-literal=url=ghcr.io/arcturusconsulting \
   --from-literal=enableOCI=true \
   --from-literal=username=ArcturusConsulting \
   --from-literal=password="YOUR_PERSONAL_ACCESS_TOKEN" \
   --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 
 # 2. Label the secret object so Argo CD targets it for repository authentication
-sudo k3s kubectl label secret issem-repo-credential \
+sudo k3s kubectl label secret private-ghcr-helm \
   --namespace argocd \
-  argocd.argoproj.io/secret-type=repository
-
+  argocd.argoproj.io/secret-type=repository \
+  --overwrite
+  
 # Optional: Check the credential
-sudo k3s kubectl get secret issem-repo-credential -n argocd --show-labels
+sudo k3s kubectl get secret private-ghcr-helm -n argocd --show-labels
+
+# Optional: Delete the secret (in case mistakes were made)
+sudo k3s kubectl delete secret private-ghcr-helm -n argocd
 
 # 3. Inject the matching Docker Registry credential to pull private images from GHCR
 sudo k3s kubectl create secret docker-registry ghcr-auth \
@@ -360,8 +357,26 @@ sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{
 
 # Establish a secure port-forward tunnel to access the UI locally
 sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:443
-
-# Find the password to access Argo
-sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 ```
 Open a browser tab and navigate to `https://localhost:8080` (Username: `admin`) to view the running container tree.
+
+### Optional: Applying changes in argo-application.yaml
+```bash
+sudo k3s kubectl apply -f /[PATH_TO_THE_DIRECTORY]/argo-application.yaml
+```
+
+### Optional: Uninstalling k3s (for resetting from scratch)
+```bash
+# 1. Run the official uninstaller
+sudo /usr/local/bin/k3s-uninstall.sh
+
+# 2. Obliterate lingering network interfaces, configurations, and cache directories
+sudo rm -rf /etc/rancher /var/lib/rancher /var/lib/kubelet /run/k3s ~/.kube
+```
+
+### 6. Inject a Node Failure (Resiliency Drill)
+Simulate a catastrophic hardware rack failure by deleting the running application pod mid-transit:
+```bash
+sudo k3s kubectl delete pod -l app=issem-core
+```
+*Observe that the cluster controller handles container failover immediately. A fresh instance initializes on an available thread slot, hits the live Redis storage cache, and resumes handling active AMR coordinates within 50 milliseconds with zero loss of execution history.*

@@ -3,7 +3,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/arcturusconsulting/issem-orchestrator
-  tag: "v0.1.0-7cc8ead"
+  tag: "0.0.0-snapshot" # The automated pipeline will update this dynamically
   pullPolicy: IfNotPresent
 
 # Factory infrastructure endpoints
@@ -15,4 +15,4 @@ envOverrides:
 hostPaths:
   configJson: "/home/norrie/issem/config.json"
   pkiDir: "/home/norrie/issem/vault/acme-logistics"
-  licenseJwt: "/home/norrie/issem/license.jwt"
+  licenseJwt: "/home/norrie/issem/vault/acme-logistics/license.jwt"
