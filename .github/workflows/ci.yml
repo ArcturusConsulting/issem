@@ -3,11 +3,15 @@ name: Industrial Release Pipeline
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - 'deploy/**' # 1. PREVENTS INFINITE WORKFLOW LOOPS
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - 'deploy/**'
 
 permissions:
-  contents: read
+  contents: write # 2. UPGRADED TO WRITE so the runner can push values.yaml updates
   packages: write
 
 jobs:
@@ -17,8 +21,10 @@ jobs:
     steps:
     - name: Checkout Source Code
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
 
-    # 1. Set up advanced Docker Buildx engine
+    # Set up advanced Docker Buildx engine
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -33,7 +39,7 @@ jobs:
       id: git_meta
       run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-    # 2. Build and push utilizing native GitHub Actions cloud caching
+    # Build and push utilizing native GitHub Actions cloud caching
     - name: Build and Push Enterprise Container Image
       uses: docker/build-push-action@v6
       with:
@@ -42,3 +48,18 @@ jobs:
         tags: ghcr.io/arcturusconsulting/issem-orchestrator:v0.1.0-${{ env.SHORT_SHA }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+    # 3. DYNAMICALLY REWRITE THE CHART VALUES (Preserves your exact formatting and indentations)
+    - name: Update Helm Chart Values
+      run: |
+        sed -i 's|repository: .*|repository: ghcr.io/arcturusconsulting/issem-orchestrator|' deploy/issem-chart/values.yaml
+        sed -i 's|tag: .*|tag: "v0.1.0-${{ env.SHORT_SHA }}"|' deploy/issem-chart/values.yaml
+
+    # 4. COMMIT THE MANIFEST UPDATE BACK TO YOUR REPOSITORY
+    - name: Commit and Push Manifest Update
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add deploy/issem-chart/values.yaml
+        git commit -m "ci: update image tag to v0.1.0-${{ env.SHORT_SHA }} [skip ci]"
+        git push origin main
