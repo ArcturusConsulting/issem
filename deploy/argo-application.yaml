@@ -6,19 +6,17 @@ metadata:
 spec:
   project: default
 
-  # 1. THE SOURCE: Where Argo CD pulls the configuration from
   source:
-    repoURL: 'https://github.com/arcturusconsulting/issem.git'
-    targetRevision: HEAD
-    path: deploy/issem-chart  # The folder inside your repo containing your Helm chart
+    chart: issem-chart
+    repoURL: oci://ghcr.io/arcturusconsulting
+    # Tracks any automatic patch updates within the 0.1.x life cycle
+    targetRevision: ^0.1.0 
 
-  # 2. THE DESTINATION: Where Argo CD deploys the application locally
   destination:
     server: 'https://kubernetes.default.svc'
-    namespace: default  # The namespace where your core service will run
+    namespace: default
 
-  # 3. THE SYNC POLICY: Automated reconciliation rules
   syncPolicy:
     automated:
-      prune: true      # Automatically delete resources if you remove them from Git
-      selfHeal: true   # If someone edits the cluster manually, overwrite it to match Git
+      prune: true
+      selfHeal: true

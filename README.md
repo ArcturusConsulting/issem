@@ -317,24 +317,31 @@ To allow the edge cluster to fetch your private Helm chart topologies and privat
 
 ```bash
 # 1. Create the credential mapping secret for Git access
-sudo k3s kubectl create secret generic issem-repo-credential \
+sudo k3s kubectl create secret generic private-ghcr-helm \
   --namespace argocd \
-  --from-literal=type=git \
-  --from-literal=url=https://github.com/ArcturusConsulting/issem.git \
+  --from-literal=type=helm \
+  --from-literal=name=ghcr-oci \
+  --from-literal=url=oci://ghcr.io/arcturusconsulting \
+  --from-literal=enableOCI=true \
   --from-literal=username=ArcturusConsulting \
-  --from-literal=password=YOUR_FINE_GRAINED_READ_ONLY_TOKEN
+  --from-literal=password="YOUR_PERSONAL_ACCESS_TOKEN" \
+  --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 
 # 2. Label the secret object so Argo CD targets it for repository authentication
 sudo k3s kubectl label secret issem-repo-credential \
   --namespace argocd \
   argocd.argoproj.io/secret-type=repository
 
+# Optional: Check the credential
+sudo k3s kubectl get secret issem-repo-credential -n argocd --show-labels
+
 # 3. Inject the matching Docker Registry credential to pull private images from GHCR
 sudo k3s kubectl create secret docker-registry ghcr-auth \
   --docker-server=ghcr.io \
   --docker-username=ArcturusConsulting \
-  --docker-password=YOUR_FINE_GRAINED_READ_ONLY_TOKEN \
-  --namespace default
+  --docker-password=YOUR_PERSONAL_ACCESS_TOKEN \
+  --namespace default \
+  --dry-run=client -o yaml | sudo k3s kubectl apply -f -
 ```
 
 ### 4. Initialize the Master GitOps Control Application
