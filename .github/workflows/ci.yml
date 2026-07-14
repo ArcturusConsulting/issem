@@ -2,12 +2,12 @@ name: Industrial Release Pipeline
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches: [ "main" ] # ◄ TARGETS THE MAIN BRANCH ONLY. No development branch noise.
+    paths-ignore:
+      - 'deploy/**' # Prevents infinite loop when the bot commits values.yaml
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
@@ -17,8 +17,11 @@ jobs:
     steps:
     - name: Checkout Source Code
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        ref: main # ◄ Force checkout of the main branch cleanly
 
-    # 1. Set up advanced Docker Buildx engine
+    # Set up advanced Docker Buildx engine
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -33,7 +36,7 @@ jobs:
       id: git_meta
       run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-    # 2. Build and push utilizing native GitHub Actions cloud caching
+    # Build and push utilizing native GitHub Actions cloud caching
     - name: Build and Push Enterprise Container Image
       uses: docker/build-push-action@v6
       with:
@@ -42,3 +45,18 @@ jobs:
         tags: ghcr.io/arcturusconsulting/issem-orchestrator:v0.1.0-${{ env.SHORT_SHA }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+    # Dynamically rewrite the chart values
+    - name: Update Helm Chart Values
+      run: |
+        sed -i 's|repository: .*|repository: ghcr.io/arcturusconsulting/issem-orchestrator|' deploy/issem-chart/values.yaml
+        sed -i 's|tag: .*|tag: "v0.1.0-${{ env.SHORT_SHA }}"|' deploy/issem-chart/values.yaml
+
+    # Commit the manifest update back to the main branch
+    - name: Commit and Push Manifest Update
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add deploy/issem-chart/values.yaml
+        git commit -m "ci: update image tag to v0.1.0-${{ env.SHORT_SHA }} [skip ci]"
+        git push origin HEAD:main # ◄ Push strictly back to main
