@@ -30,9 +30,6 @@ struct LicenseClaims {
     max_amr_fleet: usize, // Hard ceiling for authorized robot counts
 }
 
-// Hardcoded Cryptographic Public Key (Used to verify your signatures)
-const PUBLIC_KEY_PEM: &[u8] = b"-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA927R2wZpL7oWq1C6E2k3B9f+F1XhQ12vY1n4eM8uJ3s=\n-----END PUBLIC KEY-----";
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // 1. Initialize System Logger
@@ -46,29 +43,41 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // ==============================================================================
     // NEW: ENTERPRISE LICENSING GATEWAY BLOCK
     // ==============================================================================
+    info!("🔑 Loading cryptographic public key from volume mount...");
+    // 1. Map the IO read error to a String
+    let public_key_pem = std::fs::read("/app/pki/public.pem")
+        .map_err(|e| format!("Failed to read public key file: {}", e))?; 
+
     info!("🔑 Validating production runtime activation license token...");
     
+    // 2. Map file access to a String
     let mut license_file = File::open("license.jwt").map_err(|_| {
-        "Licensing Fault: Cryptographic token validation failed! Missing required 'license.jwt' registration block."
+        "Licensing Fault: Cryptographic token validation failed! Missing required 'license.jwt' registration block.".to_string()
     })?;
+    
     let mut jwt_token = String::new();
-    license_file.read_to_string(&mut jwt_token)?;
+    // 3. Map reading of file to a String
+    license_file.read_to_string(&mut jwt_token)
+        .map_err(|e| format!("Failed to read license file payload: {}", e))?;
     let jwt_token = jwt_token.trim();
 
     // Decode and verify the cryptographic signature using Ed25519
-    let decoding_key = DecodingKey::from_ed_pem(PUBLIC_KEY_PEM)?;
+    // 4. Pass an explicit slice reference &[u8] and map the error to a String
+    let decoding_key = DecodingKey::from_ed_pem(&public_key_pem[..])
+        .map_err(|e| format!("Cryptographic validation fault: Invalid Public Key format: {}", e))?;
+        
     let mut validation = Validation::new(Algorithm::EdDSA);
     validation.validate_exp = true; // Enforces the token expiration date check automatically
 
+    // 5. Map decoding errors to a String
     let token_data = decode::<LicenseClaims>(&jwt_token, &decoding_key, &validation)
         .map_err(|err| {
             warn!("❌ Cryptographic Signature Check Failed: License altered or signature invalid.");
-            err
+            format!("JWT Signature validation failed: {}", err)
         })?;
 
     let claims = token_data.claims;
-    info!("✅ License verified successfully for client asset: [{}]. Issued by: {}. Expiry timestamp: {}", claims.sub, claims.iss, claims.exp);    // ==============================================================================
-
+    info!("✅ License verified successfully for client asset: [{}]. Issued by: {}. Expiry timestamp: {}", claims.sub, claims.iss, claims.exp);
     // 2. Ingest Integrated Configuration Map
     let mut config_file = File::open("config.json")
         .map_err(|_| "Catastrophic Startup Fault: Missing required 'config.json' file in working route path!")?;
