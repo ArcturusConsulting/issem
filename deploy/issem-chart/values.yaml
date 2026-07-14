@@ -2,8 +2,8 @@
 replicaCount: 1
 
 image:
-  repository: issem-orchestrator
-  tag: latest
+  repository: ghcr.io/arcturusconsulting/issem-orchestrator
+  tag: "v0.1.0-7cc8ead"
   pullPolicy: IfNotPresent
 
 # Factory infrastructure endpoints
