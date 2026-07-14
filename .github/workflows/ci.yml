@@ -6,6 +6,7 @@ on:
     branches: [ "main" ]
 
 permissions:
+  contents: read
   packages: write  # No more "contents: write" needed!
 
 jobs:
