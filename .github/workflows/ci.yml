@@ -60,9 +60,9 @@ jobs:
         push: true
         # Dynamically applies versions. If it's a real tag release, it adds the absolute tag and :latest as well.
         tags: |
-          ghcr.io/arcturusconsulting/issem-orchestrator:${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}
-          ${{ env.IS_RELEASE == 'true' && format('ghcr.io/arcturusconsulting/issem-orchestrator:{0}', env.APP_VERSION) || '' }}
-          ${{ env.IS_RELEASE == 'true' && 'ghcr.io/arcturusconsulting/issem-orchestrator:latest' || '' }}
+          ghcr.io/arcturusconsulting/issem-gateway:${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}
+          ${{ env.IS_RELEASE == 'true' && format('ghcr.io/arcturusconsulting/issem-gateway:{0}', env.APP_VERSION) || '' }}
+          ${{ env.IS_RELEASE == 'true' && 'ghcr.io/arcturusconsulting/issem-gateway:latest' || '' }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
@@ -78,4 +78,4 @@ jobs:
           --app-version "${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}"
           
         # Push the packaged chart package to our OCI registry space (aligned with issem-gateway output name)
-        helm push issem-gateway-${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}.tgz oci://ghcr.io/arcturusconsulting
+        helm push issem-gateway-${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}.tgz oci://ghcr.io/arcturusconsulting/charts

@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: issem-orchestrator
+  name: issem-gateway
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
