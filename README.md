@@ -362,7 +362,12 @@ Open a browser tab and navigate to `https://localhost:8080` (Username: `admin`) 
 
 ### Optional: Applying changes in argo-application.yaml
 ```bash
+# 1. Apply the updated manifest
 sudo k3s kubectl apply -f /[PATH_TO_THE_DIRECTORY]/argo-application.yaml
+
+# 2. Tell Argo CD to refresh instantly (use the app name defined in your metadata.name above)
+sudo k3s kubectl patch application issem-gateway -n argocd --type merge \
+  -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
 ```
 
 ### Optional: Uninstalling k3s (for resetting from scratch)
