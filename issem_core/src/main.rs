@@ -48,12 +48,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     
     let mut master_config: MasterSystemConfig = serde_json::from_str(&config_raw)?;
 
-    // Enforce maximum robot count authorized by the cryptographic license allocation
-    if master_config.target_amr_serials.len() > claims.max_amr_fleet {
-        error!("❌ Licensing Breach: Requested fleet count ({}) exceeds authorized license limit ({}). System halting.", 
-            master_config.target_amr_serials.len(), claims.max_amr_fleet);
-        return Err("Licensing Boundary Violation".into());
-    }
+    // [NOTE: The static check has been successfully migrated to dynamic lease admission control]
 
     if let Ok(env_redis) = std::env::var("ISSEM_REDIS_URL") {
         info!("🔄 On-Premise Override: Applying Redis target state storage URL from environment cluster config.");
@@ -92,6 +87,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         listen_host: master_config.zenoh_listen_host.clone(),
         listen_port: master_config.zenoh_listen_port,
         target_amr_serials: master_config.target_amr_serials.clone(),
+        max_amr_fleet: claims.max_amr_fleet, // ◄ Cryptographic limit dynamically handled in telemetry
     };
     start_telemetry_uplink(driver_config.clone(), &zenoh_session, redis_client.clone()).await?;
     start_command_downlink(driver_config, zenoh_session, redis_client.clone(), southbound_rx).await?;
