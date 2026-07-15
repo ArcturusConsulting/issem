@@ -15,7 +15,9 @@ jobs:
 
     steps:
     - name: Checkout Source Code
-      uses: actions/checkout@v4 # Kept standard and parameterless, exactly how you had it
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
