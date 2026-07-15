@@ -326,12 +326,6 @@ sudo k3s kubectl label secret private-ghcr-helm \
   argocd.argoproj.io/secret-type=repository \
   --overwrite
   
-# Optional: Check the credential
-sudo k3s kubectl get secret private-ghcr-helm -n argocd --show-labels
-
-# Optional: Delete the secret (in case mistakes were made)
-sudo k3s kubectl delete secret private-ghcr-helm -n argocd
-
 # 3. Inject the matching Docker Registry credential to pull private images from GHCR
 sudo k3s kubectl create secret docker-registry ghcr-auth \
   --docker-server=ghcr.io \
@@ -360,7 +354,8 @@ sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 Open a browser tab and navigate to `https://localhost:8080` (Username: `admin`) to view the running container tree.
 
-### Optional: Applying changes in argo-application.yaml
+## 6. Useful commands
+### Applying changes in argo-application.yaml
 ```bash
 # 1. Apply the updated manifest
 sudo k3s kubectl apply -f /[PATH_TO_THE_DIRECTORY]/argo-application.yaml
@@ -370,7 +365,22 @@ sudo k3s kubectl patch application issem-gateway -n argocd --type merge \
   -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
 ```
 
-### Optional: Uninstalling k3s (for resetting from scratch)
+### Check the credential
+```bash
+sudo k3s kubectl get secret private-ghcr-helm -n argocd --show-labels
+```
+
+### Delete the secret (in case mistakes were made)
+```bash
+sudo k3s kubectl delete secret private-ghcr-helm -n argocd
+```
+
+### Checking logs of the container
+```bash
+sudo k3s kubectl logs -f deployment/issem-gateway -n default --tail=50
+```
+
+### Uninstalling k3s (for resetting from scratch)
 ```bash
 # 1. Run the official uninstaller
 sudo /usr/local/bin/k3s-uninstall.sh
@@ -379,7 +389,7 @@ sudo /usr/local/bin/k3s-uninstall.sh
 sudo rm -rf /etc/rancher /var/lib/rancher /var/lib/kubelet /run/k3s ~/.kube
 ```
 
-### 6. Inject a Node Failure (Resiliency Drill)
+### Inject a Node Failure (Resiliency Drill)
 Simulate a catastrophic hardware rack failure by deleting the running application pod mid-transit:
 ```bash
 sudo k3s kubectl delete pod -l app=issem-core
