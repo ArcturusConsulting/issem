@@ -314,7 +314,7 @@ sudo k3s kubectl create secret generic private-ghcr-helm \
   --namespace argocd \
   --from-literal=type=helm \
   --from-literal=name=ghcr-oci \
-  --from-literal=url=ghcr.io/arcturusconsulting \
+  --from-literal=url=ghcr.io/arcturusconsulting/charts \
   --from-literal=enableOCI=true \
   --from-literal=username=ArcturusConsulting \
   --from-literal=password="YOUR_PERSONAL_ACCESS_TOKEN" \

@@ -9,7 +9,7 @@ image:
 # Factory infrastructure endpoints
 envOverrides:
   plcEndpoint: "opc.tcp://127.0.0.1:4840/"
-  redisUrl: "redis://127.0.0.1:6379"
+  redisUrl: "redis://redis:6379"
 
 # Physical host paths on the client server rack
 hostPaths:
