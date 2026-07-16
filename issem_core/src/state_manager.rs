@@ -92,3 +92,27 @@ pub async fn set_pause_state(
     
     let _: redis::RedisResult<()> = conn.hset(&lifecycle_key, "paused", val).await;
 }
+
+/// Stores the active target node ID that the robot is currently traveling toward.
+pub async fn cache_target_node(
+    serial: &str,
+    node_id: &str,
+    conn: &mut redis::aio::MultiplexedConnection,
+) {
+    let key = format!("amr:{}:target_node_id", serial);
+    if let Err(err) = conn.set::<_, _, ()>(&key, node_id).await {
+        log::error!("❌ [State Cache] Failed to cache target node for [{}]: {}", serial, err);
+    }
+}
+
+/// Retrieves the last logical node ID successfully reached by the robot.
+pub async fn get_last_node(
+    serial: &str,
+    conn: &mut redis::aio::MultiplexedConnection,
+) -> String {
+    let key = format!("amr:{}:last_node_id", serial);
+    match conn.get::<_, Option<String>>(&key).await {
+        Ok(Some(node_id)) => node_id,
+        _ => "init_node".to_string(), // Fallback node ID for system startup
+    }
+}

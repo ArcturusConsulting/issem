@@ -133,6 +133,44 @@ pub async fn start_telemetry_uplink(
 
             if let Err(err) = update_result {
                 error!("❌ [Telemetry] Failed to persist state coordinates for asset [{}] into Redis: {}", serial_number, err);
+                continue;
+            }
+
+            // ==============================================================================
+            // 🎯 GEOMETRIC ARRIVAL HANDSHAKE
+            // ==============================================================================
+            // Retrieve active target coordinates from Redis to determine if we are at the goal node.
+            let goal_key = format!("amr:{}:active_goal", serial_number);
+            if let Ok(Some(raw_goal)) = redis::cmd("GET")
+                .arg(&goal_key)
+                .query_async::<_, Option<String>>(&mut redis_conn)
+                .await 
+            {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw_goal) {
+                    if let (Some(target_x), Some(target_y)) = (json["x"].as_f64(), json["y"].as_f64()) {
+                        let delta_x = x - target_x;
+                        let delta_y = y - target_y;
+                        let distance_to_goal = (delta_x * delta_x + delta_y * delta_y).sqrt();
+
+                        // If the robot is within 15 cm of the target coordinates, promote target_node_id to last_node_id
+                        if distance_to_goal < 0.15 {
+                            let target_node_key = format!("amr:{}:target_node_id", serial_number);
+                            let last_node_key = format!("amr:{}:last_node_id", serial_number);
+
+                            if let Ok(Some(reached_node)) = redis::cmd("GET")
+                                .arg(&target_node_key)
+                                .query_async::<_, Option<String>>(&mut redis_conn)
+                                .await
+                            {
+                                let _: Result<(), _> = redis::cmd("SET")
+                                    .arg(&last_node_key)
+                                    .arg(&reached_node)
+                                    .query_async(&mut redis_conn)
+                                    .await;
+                            }
+                        }
+                    }
+                }
             }
         }
     });

@@ -74,13 +74,28 @@ pub async fn start_mqtt_gateway(
                                 if let Some(target_node) = order.nodes.iter().find(|n| n.node_position.is_some()) {
                                     let position = target_node.node_position.as_ref().unwrap();
                                     
+                                    // ==============================================================================
+                                    // 🔌 DEFENSIVE VDA 5050 ACTION PARSING
+                                    // ==============================================================================
+                                    // Inspect the waypoint node's actions for any "clearHighSpeedDoor" tasks.
+                                    // If found, safely extract its "door_id" parameter.
+                                    let pending_action = target_node.actions.iter()
+                                        .find(|a| a.action_type == "clearHighSpeedDoor")
+                                        .and_then(|a| {
+                                            a.action_parameters.as_ref()?.iter()
+                                                .find(|p| p.key == "door_id")
+                                                .and_then(|p| p.value.as_str().map(String::from))
+                                        });
+
                                     let event = NorthboundEvent::OrderReceived {
                                         manufacturer: manufacturer.clone(),
                                         serial_number: serial_number.clone(),
                                         order_id: order.order_id,
+                                        node_id: target_node.node_id.clone(), // ◄ ADDED: Extract the node ID string
                                         x: position.x,
                                         y: position.y,
                                         theta: position.theta,
+                                        pending_action,
                                     };
 
                                     if let Err(err) = event_sender.send(event).await {
