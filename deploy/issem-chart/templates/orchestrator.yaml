@@ -36,15 +36,21 @@ spec:
           periodSeconds: 10
         volumeMounts:
         - name: global-config
-          mountPath: /app/config.json # Cleaned: subPath removed
+          mountPath: /app/config.json
+        - name: opc-mapping             # ◄ 1. Mounts the file inside the /app directory
+          mountPath: /app/opc_ua_mapping.json
         - name: pki-store
           mountPath: /app/pki
         - name: license-token
-          mountPath: /app/license.jwt # Cleaned: subPath removed
+          mountPath: /app/license.jwt
       volumes:
       - name: global-config
         hostPath:
           path: {{ .Values.hostPaths.configJson }}
+          type: File
+      - name: opc-mapping             # ◄ 2. References the mapping file's physical host path
+        hostPath:
+          path: {{ .Values.hostPaths.opcUaMappingJson }}
           type: File
       - name: pki-store
         hostPath:

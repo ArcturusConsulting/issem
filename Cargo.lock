@@ -9,6 +9,7 @@ dependencies = [
  "async-opcua",
  "log",
  "serde",
+ "serde_json",
  "tokio",
 ]
 

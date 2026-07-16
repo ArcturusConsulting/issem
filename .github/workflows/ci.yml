@@ -74,10 +74,17 @@ jobs:
         # Log Helm client into GHCR
         echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
         
-        # Package the chart, dynamically injecting the versions matching our container tags
+        # Determine the target Helm package version
+        if [[ "${{ env.IS_RELEASE }}" == "true" ]]; then
+          CHART_VER="${{ env.APP_VERSION }}"
+        else
+          CHART_VER="${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}"
+        fi
+
+        # Package the chart using the clean version for releases, or snapshot version for commits
         helm package deploy/issem-chart \
-          --version "${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}" \
-          --app-version "${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}"
+          --version "$CHART_VER" \
+          --app-version "$CHART_VER"
           
-        # Push the packaged chart package to our OCI registry space (aligned with issem-gateway output name)
-        helm push issem-gateway-${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}.tgz oci://ghcr.io/arcturusconsulting/charts
+        # Push the packaged chart to our OCI registry space
+        helm push issem-gateway-${CHART_VER}.tgz oci://ghcr.io/arcturusconsulting/charts

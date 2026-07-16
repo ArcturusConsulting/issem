@@ -339,7 +339,7 @@ sudo k3s kubectl create secret docker-registry ghcr-auth \
 Apply the root application manifest from your deployment folder to initiate the cluster pull engine:
 
 ```bash
-sudo k3s kubectl apply -f deploy/argo-application.yaml
+sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
 ```
 
 ### 5. Access the Local Management Console
@@ -358,7 +358,7 @@ Open a browser tab and navigate to `https://localhost:8080` (Username: `admin`) 
 ### Applying changes in argo-application.yaml
 ```bash
 # 1. Apply the updated manifest
-sudo k3s kubectl apply -f /[PATH_TO_THE_DIRECTORY]/argo-application.yaml
+sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
 
 # 2. Tell Argo CD to refresh instantly (use the app name defined in your metadata.name above)
 sudo k3s kubectl patch application issem-gateway -n argocd --type merge \

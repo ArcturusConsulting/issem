@@ -93,7 +93,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     start_command_downlink(driver_config, zenoh_session, redis_client.clone(), southbound_rx).await?;
     info!("🤖 Southbound driver background actors successfully mounted.");
 
-    start_opc_ua_gateway(master_config.opc_ua_plc_url.clone(), peripheral_rx).await?;
+    // MODIFIED:
+    start_opc_ua_gateway(
+        master_config.opc_ua_plc_url.clone(), 
+        master_config.opc_ua_mapping_path.clone(),
+        peripheral_rx
+    ).await?;
     info!("🏭 East/West OPC UA peripheral background worker active.");
 
     let gateway_config = MqttGatewayConfig {
