@@ -3,12 +3,28 @@
 
 use std::error::Error;
 use std::time::Duration;
-use log::{info, error};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
+use log::{info, error, warn}; // Added warn! for configuration fallbacks
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot::Sender as OneshotSender;
+use serde::Deserialize; // For parsing the mapping file
 
 use opcua::client::*;
 use opcua::types::*;
+
+/// Deserialization layout matching deploy/opc_ua_mapping.json
+#[derive(Deserialize, Debug, Clone)]
+pub struct OpcSignalTemplate {
+    pub ns: u16,
+    pub node_id_pattern: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct OpcUaMapping {
+    pub signals: HashMap<String, OpcSignalTemplate>,
+}
 
 /// Strongly typed facility overrides sent from `issem_core` down to factory hardware.
 #[derive(Debug)]
@@ -30,9 +46,30 @@ pub enum PeripheralRequest {
 /// and loops indefinitely processing structural infrastructure overrides from the core.
 pub async fn start_opc_ua_gateway(
     endpoint_url: String,
+    mapping_path: String, // ◄ Added parameter for configuration path
     mut request_receiver: Receiver<PeripheralRequest>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     info!("🔌 [East/West Gateway] Initializing industrial OPC UA client stack...");
+
+    // 1. Safe boot-time parsing of the dynamic PLC mapping configuration
+    let mapping = match File::open(&mapping_path) {
+        Ok(file) => {
+            match serde_json::from_reader::<_, OpcUaMapping>(BufReader::new(file)) {
+                Ok(parsed) => {
+                    info!("✅ [East/West Gateway] Loaded {} OPC UA template mappings from: {}", parsed.signals.len(), mapping_path);
+                    Some(parsed)
+                }
+                Err(err) => {
+                    warn!("⚠️ [East/West Gateway] Parsing fault in mapping config [{}]: {}. Using fallback patterns.", mapping_path, err);
+                    None
+                }
+            }
+        }
+        Err(_) => {
+            warn!("⚠️ [East/West Gateway] No PLC mapping file found at '{}'. Using hardcoded fallback schema.", mapping_path);
+            None
+        }
+    };
 
     // FIXED: Use the public ClientBuilder pattern to instantiate the client safely
     let mut client = ClientBuilder::new()
@@ -43,11 +80,11 @@ pub async fn start_opc_ua_gateway(
         .map_err(|e| format!("Failed to build OPC UA Client: {:?}", e))?;
 
     // 2. Spawn the primary connection loop running inside a non-blocking worker thread
+    let mapping_clone = mapping.clone(); // Clone option to safely move into thread closure
     tokio::spawn(async move {
         info!("🏭 [East/West Gateway] Launching background PLC orchestration worker thread.");
 
         // FIXED: Build a strongly typed EndpointDescription directly from a clean tuple definition
-        // Build a strongly typed EndpointDescription directly from a clean tuple definition
         let endpoint_desc: EndpointDescription = (
             endpoint_url.as_str(),
             "None",
@@ -71,7 +108,19 @@ pub async fn start_opc_ua_gateway(
                             PeripheralRequest::ClearHighSpeedDoor { door_id, responder_tx } => {
                                 info!("🚪 [OPC UA] Actuating high-speed factory door gate asset: [{}]", door_id);
 
-                                let target_node = NodeId::new(2, format!("DB10.Door_Control.{}", door_id));
+                                // ◄ DYNAMIC NODE RESOLUTION WITH COMPATIBILITY FALLBACK
+                                let target_node = match &mapping_clone {
+                                    Some(map) => {
+                                        if let Some(tmpl) = map.signals.get("door_control_template") {
+                                            let identifier = tmpl.node_id_pattern.replace("{}", &door_id);
+                                            NodeId::new(tmpl.ns, identifier)
+                                        } else {
+                                            NodeId::new(2, format!("DB10.Door_Control.{}", door_id))
+                                        }
+                                    }
+                                    None => NodeId::new(2, format!("DB10.Door_Control.{}", door_id))
+                                };
+
                                 let value_to_write = DataValue::value_only(true);
                                 let write_value = WriteValue::new(target_node, AttributeId::Value, NumericRange::None, value_to_write);
                                 
@@ -97,7 +146,19 @@ pub async fn start_opc_ua_gateway(
                             PeripheralRequest::InterlockConveyor { conveyor_id, action, responder_tx } => {
                                 info!("⚙️ [OPC UA] Driving conveyor section interlock state for [{}]: Target = {}", conveyor_id, action);
 
-                                let target_node = NodeId::new(2, format!("DB12.Conveyor_Run.{}", conveyor_id));
+                                // ◄ DYNAMIC NODE RESOLUTION WITH COMPATIBILITY FALLBACK
+                                let target_node = match &mapping_clone {
+                                    Some(map) => {
+                                        if let Some(tmpl) = map.signals.get("conveyor_run_template") {
+                                            let identifier = tmpl.node_id_pattern.replace("{}", &conveyor_id);
+                                            NodeId::new(tmpl.ns, identifier)
+                                        } else {
+                                            NodeId::new(2, format!("DB12.Conveyor_Run.{}", conveyor_id))
+                                        }
+                                    }
+                                    None => NodeId::new(2, format!("DB12.Conveyor_Run.{}", conveyor_id))
+                                };
+
                                 let signal_bit = action == "START";
                                 let value_to_write = DataValue::value_only(signal_bit);
                                 let write_value = WriteValue::new(target_node, AttributeId::Value, NumericRange::None, value_to_write);

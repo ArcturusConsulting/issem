@@ -5,12 +5,22 @@ use log::{info, error};
 use redis::AsyncCommands;
 
 /// Sets up the default infrastructure bits inside Redis for all configured AMRs.
+/// Also purges any stale dynamic admission leases to ensure a clean startup state.
 pub async fn initialize_fleet_registry(
     serials: &[String],
     redis_client: &redis::Client,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let mut conn = redis_client.get_multiplexed_tokio_connection().await?;
     
+    // 1. Purge the dynamic lease set on startup
+    // Ensures a clean slate so dead sessions from previous system runs don't take up licensing slots!
+    let _: redis::RedisResult<()> = redis::cmd("DEL")
+        .arg("active_amrs")
+        .query_async(&mut conn)
+        .await;
+    info!("🗄️ [Redis] Dynamic active license lease registry ('active_amrs') flushed clean.");
+    
+    // 2. Initialize lifecycle configs for all known configured AMRs
     for serial in serials {
         let lifecycle_key = format!("amr:{}:lifecycle", serial);
         
@@ -25,6 +35,16 @@ pub async fn initialize_fleet_registry(
         info!("🗄️ [Redis] State boundaries validated for asset: {}", serial);
     }
     Ok(())
+}
+
+/// Retrieves the list of currently dynamically admitted and active AMR serials.
+/// Other parts of your stack (like the orchestrator) can use this to ignore unlicensed robots.
+pub async fn get_active_fleet(
+    conn: &mut redis::aio::MultiplexedConnection,
+) -> Result<Vec<String>, Box<dyn Error + Send + Sync>> {
+    // Query the Sorted Set for all members (since expired leases are automatically pruned by the driver)
+    let active: Vec<String> = conn.zrange("active_amrs", 0, -1).await?;
+    Ok(active)
 }
 
 /// Temporarily caches the high-level corporate target coordinates inside the database tier.
