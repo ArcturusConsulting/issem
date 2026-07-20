@@ -1,4 +1,6 @@
-# ISSEM (Industrial Stateless Server Orchestration Middleware)
+![ISSEM Logo](ISSEM.png)
+# ISSEM (Interoperative Semantic Synchronization Enabling Module)
+## Blasing Fast VDA 5050 / ROS2 / OPC UA Adapter
 
 ISSEM is a centralized, high-performance, stateless server-side gateway written in pure Rust. It bridges the chasm between corporate **Warehouse Execution Systems (WES)**, agile, open-source **Autonomous Mobile Robots (AMRs)**, and physical **Operational Technology (OT) infrastructure** such as elevators, conveyor lines, and automatic doors.
 
