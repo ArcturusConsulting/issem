@@ -22,9 +22,11 @@ pub enum NorthboundEvent {
         manufacturer: String,
         serial_number: String,
         order_id: String,
+        node_id: String, // ◄ ADDED: Transports the target logical node ID
         x: f64,
         y: f64,
         theta: f64,
+        pending_action: Option<String>,
     },
     InstantActionReceived {
         manufacturer: String,

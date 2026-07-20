@@ -30,8 +30,6 @@ pub async fn start_core_orchestrator(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     info!("🧠 [Core Engine] Transactional compute loops activated with East/West interlocks.");
 
-    let mut redis_conn = redis_client.get_multiplexed_tokio_connection().await?;
-
     // TASK 1: Dynamic Outbound VDA5050 State Broadcaster (5 Hz)
     let bcast_client = mqtt_client.clone();
     let bcast_config = config.clone();
@@ -58,6 +56,9 @@ pub async fn start_core_orchestrator(
 
                 let coords: std::collections::HashMap<String, String> = state_conn.hgetall(&pose_key).await.unwrap_or_default();
                 let lifecycle: std::collections::HashMap<String, String> = state_conn.hgetall(&lifecycle_key).await.unwrap_or_default();
+                
+                // Fetch the last successfully reached node ID from Redis
+                let last_node_id = crate::state_manager::get_last_node(serial, &mut state_conn).await; // ◄ ADDED
 
                 let x: f64 = coords.get("x").and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 let y: f64 = coords.get("y").and_then(|v| v.parse().ok()).unwrap_or(0.0);
@@ -82,6 +83,7 @@ pub async fn start_core_orchestrator(
                         position_initialized: true,
                         map_id: bcast_config.warehouse_map_id.clone(),
                     },
+                    last_node_id, // ◄ ADDED: Pack it dynamically into the state frame
                     battery_state: BatteryState {
                         battery_charge: 100.0, 
                         battery_voltage: 24.0,
@@ -114,79 +116,90 @@ pub async fn start_core_orchestrator(
 
     // TASK 2: Continuous Multi-Tenant Command Ingestion Loop
     while let Some(event) = northbound_receiver.recv().await {
-        match event {
-            NorthboundEvent::OrderReceived { manufacturer: _, serial_number, order_id, x, y, theta } => {
-                info!("🧠 [Core Engine] Routing path target [{}] validated for asset [{}]", order_id, serial_number);
+        // Clone thread-safe handles so they can be moved into concurrent async blocks safely
+        let redis_client_clone = redis_client.clone();
+        let southbound_sender_clone = southbound_sender.clone();
+        let peripheral_sender_clone = peripheral_sender.clone();
 
-                cache_active_goal(&serial_number, x, y, theta, &mut redis_conn).await;
+        tokio::spawn(async move {
+            let mut local_redis_conn = match redis_client_clone.get_multiplexed_tokio_connection().await {
+                Ok(conn) => conn,
+                Err(err) => {
+                    error!("❌ [Core Engine] Failed to get local Redis connection for task: {}", err);
+                    return;
+                }
+            };
 
-                // --- CONTEXT INTERLOCK SIMULATION ---
-                // If the coordinate matches a physical gate zone, execute a synchronous PLC handshake first!
-                if x > 20.0 { 
-                    warn!("🚧 [Interlock Zone] Target X coordinate ({}) requires clearance through automated gate Door_A1!", x);
-                    
-                    // Allocate an ephemeral oneshot synchronization portal
-                    let (tx, rx) = oneshot::channel();
-                    
-                    let request = PeripheralRequest::ClearHighSpeedDoor {
-                        door_id: "Door_A1".to_string(),
-                        responder_tx: tx,
-                    };
+            match event {
+                NorthboundEvent::OrderReceived { manufacturer: _, serial_number, order_id, node_id, x, y, theta, pending_action } => {
+                    info!("🧠 [Core Engine] Routing path target [{}] validated for asset [{}]", order_id, serial_number);
 
-                    // Send request down to the OPC UA crate worker
-                    if peripheral_sender.send(request).await.is_ok() {
-                        info!("⏳ [Core Engine] Holding Southbound command trace... awaiting PLC verification signal.");
+                    cache_active_goal(&serial_number, x, y, theta, &mut local_redis_conn).await;
+                    crate::state_manager::cache_target_node(&serial_number, &node_id, &mut local_redis_conn).await; // ◄ ADDED
+
+                    if let Some(action) = pending_action {
+                        info!("🚧 [Action Interlock] Order specifies explicit VDA 5050 peripheral action: [{}]", action);
                         
-                        // Block safely until the OPC UA client resolves the future
-                        match rx.await {
-                            Ok(true) => info!("🔓 [Core Engine] PLC handshakes passed. Gate reported open! Releasing AMR."),
-                            _ => {
-                                error!("❌ [Core Engine] Interlock rejection! PLC reported hardware fault. Aborting route dispatch.");
-                                continue; // Skip routing this command to protect physical assets
+                        let (tx, rx) = oneshot::channel();
+                        let request = PeripheralRequest::ClearHighSpeedDoor {
+                            door_id: action.clone(),
+                            responder_tx: tx,
+                        };
+
+                        if peripheral_sender_clone.send(request).await.is_ok() {
+                            info!("⏳ [Core Engine] Holding Southbound command trace... awaiting PLC verification signal for [{}]", action);
+                            
+                            // This blocks only THIS spawned task, NOT the main receiver loop!
+                            match rx.await {
+                                Ok(true) => info!("🔓 [Core Engine] PLC handshakes passed. Asset [{}] reported open! Releasing AMR.", action),
+                                _ => {
+                                    error!("❌ [Core Engine] Interlock rejection! PLC reported hardware fault on [{}]. Aborting route.", action);
+                                    return; // Terminate task
+                                }
                             }
                         }
                     }
+
+                    // Dispatch command down to Zenoh
+                    let cmd = SouthboundCommand::NavigateToPose { serial_number, x, y, theta };
+                    let _ = southbound_sender_clone.send(cmd).await;
                 }
 
-                // Everything is clear or cleared—dispatch command down to Zenoh
-                let cmd = SouthboundCommand::NavigateToPose { serial_number, x, y, theta };
-                let _ = southbound_sender.send(cmd).await;
-            }
+                NorthboundEvent::InstantActionReceived { manufacturer: _, serial_number, action_id, action_type } => {
+                    info!("🚨 [Core Engine] Intercepted high-priority execution directive [{}] for asset [{}]", action_type, serial_number);
 
-            NorthboundEvent::InstantActionReceived { manufacturer: _, serial_number, action_id, action_type } => {
-                info!("🚨 [Core Engine] Intercepted high-priority execution directive [{}] for asset [{}]", action_type, serial_number);
-
-                match action_type.as_str() {
-                    "pause" => {
-                        set_pause_state(&serial_number, true, &mut redis_conn).await;
-                        let _ = southbound_sender.send(SouthboundCommand::PreemptAndHalt { serial_number }).await;
-                    }
-                    "resume" => {
-                        set_pause_state(&serial_number, false, &mut redis_conn).await;
-                        
-                        if let Some((target_x, target_y, target_theta)) = retrieve_cached_goal(&serial_number, &mut redis_conn).await {
-                            let cmd = SouthboundCommand::NavigateToPose {
-                                serial_number,
-                                x: target_x,
-                                y: target_y,
-                                theta: target_theta,
-                            };
-                            let _ = southbound_sender.send(cmd).await;
-                        } else {
-                            warn!("⚠️ [Core Engine] Resume token dropped for [{}]: No active path trajectory found inside database.", serial_number);
+                    match action_type.as_str() {
+                        "pause" => {
+                            set_pause_state(&serial_number, true, &mut local_redis_conn).await;
+                            let _ = southbound_sender_clone.send(SouthboundCommand::PreemptAndHalt { serial_number }).await;
+                        }
+                        "resume" => {
+                            set_pause_state(&serial_number, false, &mut local_redis_conn).await;
+                            
+                            if let Some((target_x, target_y, target_theta)) = retrieve_cached_goal(&serial_number, &mut local_redis_conn).await {
+                                let cmd = SouthboundCommand::NavigateToPose {
+                                    serial_number,
+                                    x: target_x,
+                                    y: target_y,
+                                    theta: target_theta,
+                                };
+                                let _ = southbound_sender_clone.send(cmd).await;
+                            } else {
+                                warn!("⚠️ [Core Engine] Resume token dropped for [{}]: No active path trajectory found inside database.", serial_number);
+                            }
+                        }
+                        "cancelOrder" => {
+                            set_pause_state(&serial_number, false, &mut local_redis_conn).await;
+                            let _ = southbound_sender_clone.send(SouthboundCommand::PreemptAndHalt { serial_number }).await;
+                        }
+                        unhandled => {
+                            warn!("ℹ [Core Engine] Received unhandled enterprise action primitive token: '{}' (ID: {})", unhandled, action_id);
                         }
                     }
-                    "cancelOrder" => {
-                        set_pause_state(&serial_number, false, &mut redis_conn).await;
-                        let _ = southbound_sender.send(SouthboundCommand::PreemptAndHalt { serial_number }).await;
-                    }
-                    unhandled => {
-                        warn!("ℹ [Core Engine] Received unhandled enterprise action primitive token: '{}' (ID: {})", unhandled, action_id);
-                    }
                 }
-            }
-        }
-    }
+            } // End of match event
+        }); // End of tokio::spawn
+    } // End of while let Some
 
     Ok(())
 }

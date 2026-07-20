@@ -6,19 +6,19 @@ use std::time::Duration;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
-use log::{info, error, warn}; // Added warn! for configuration fallbacks
+use log::{info, error, warn};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot::Sender as OneshotSender;
-use serde::Deserialize; // For parsing the mapping file
+use serde::Deserialize;
 
 use opcua::client::*;
 use opcua::types::*;
 
-/// Deserialization layout matching deploy/opc_ua_mapping.json
+/// Deserialization layout matching your templated deploy/opc_ua_mapping.json layout
 #[derive(Deserialize, Debug, Clone)]
 pub struct OpcSignalTemplate {
     pub ns: u16,
-    pub node_id_pattern: String,
+    pub node_id_pattern: String, // ◄ Matches: "DB10.Door_Control.{}"
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -46,7 +46,7 @@ pub enum PeripheralRequest {
 /// and loops indefinitely processing structural infrastructure overrides from the core.
 pub async fn start_opc_ua_gateway(
     endpoint_url: String,
-    mapping_path: String, // ◄ Added parameter for configuration path
+    mapping_path: String,
     mut request_receiver: Receiver<PeripheralRequest>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     info!("🔌 [East/West Gateway] Initializing industrial OPC UA client stack...");
@@ -71,7 +71,6 @@ pub async fn start_opc_ua_gateway(
         }
     };
 
-    // FIXED: Use the public ClientBuilder pattern to instantiate the client safely
     let mut client = ClientBuilder::new()
         .application_name("ISSEM-Stateless-Gateway-Client")
         .application_uri("urn:issem:gateway:client")
@@ -80,11 +79,10 @@ pub async fn start_opc_ua_gateway(
         .map_err(|e| format!("Failed to build OPC UA Client: {:?}", e))?;
 
     // 2. Spawn the primary connection loop running inside a non-blocking worker thread
-    let mapping_clone = mapping.clone(); // Clone option to safely move into thread closure
+    let mapping_clone = mapping.clone();
     tokio::spawn(async move {
         info!("🏭 [East/West Gateway] Launching background PLC orchestration worker thread.");
 
-        // FIXED: Build a strongly typed EndpointDescription directly from a clean tuple definition
         let endpoint_desc: EndpointDescription = (
             endpoint_url.as_str(),
             "None",
@@ -95,12 +93,10 @@ pub async fn start_opc_ua_gateway(
         loop {
             info!("🔌 [East/West Gateway] Attempting connection to target field PLC at: {}", endpoint_url);
 
-            // FIXED: Use connect_to_matching_endpoint and unpack both the session and its event loop driver
             match client.connect_to_matching_endpoint(endpoint_desc.clone(), IdentityToken::Anonymous).await {
                 Ok((session, event_loop)) => {
                     info!("✅ [East/West Gateway] Secure session established with industrial PLC automation tier.");
 
-                    // FIXED: Spawn the event loop on a background task so it keeps running continuously
                     let loop_handle = event_loop.spawn();
 
                     while let Some(request) = request_receiver.recv().await {
@@ -108,7 +104,7 @@ pub async fn start_opc_ua_gateway(
                             PeripheralRequest::ClearHighSpeedDoor { door_id, responder_tx } => {
                                 info!("🚪 [OPC UA] Actuating high-speed factory door gate asset: [{}]", door_id);
 
-                                // ◄ DYNAMIC NODE RESOLUTION WITH COMPATIBILITY FALLBACK
+                                // ◄ RESOLVE TARGET NODE ID BY REPLACING "{}" IN THE PATTERN
                                 let target_node = match &mapping_clone {
                                     Some(map) => {
                                         if let Some(tmpl) = map.signals.get("door_control_template") {
@@ -146,7 +142,7 @@ pub async fn start_opc_ua_gateway(
                             PeripheralRequest::InterlockConveyor { conveyor_id, action, responder_tx } => {
                                 info!("⚙️ [OPC UA] Driving conveyor section interlock state for [{}]: Target = {}", conveyor_id, action);
 
-                                // ◄ DYNAMIC NODE RESOLUTION WITH COMPATIBILITY FALLBACK
+                                // ◄ RESOLVE TARGET NODE ID BY REPLACING "{}" IN THE PATTERN
                                 let target_node = match &mapping_clone {
                                     Some(map) => {
                                         if let Some(tmpl) = map.signals.get("conveyor_run_template") {
@@ -184,7 +180,6 @@ pub async fn start_opc_ua_gateway(
                         }
                     }
 
-                    // Clean up the spawned event loop task if the loop drops
                     let _ = session.disconnect().await;
                     let _ = loop_handle.await;
                 }

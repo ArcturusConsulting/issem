@@ -1,16 +1,12 @@
 {
   "signals": {
-    "elevator_door_sensor": {
-      "node_id": "ns=2;s=Elevator_Floor1.Door_Status",
-      "description": "Monitors the physical elevator door (Boolean: True=Open, False=Closed)"
+    "door_control_template": {
+      "ns": 2,
+      "node_id_pattern": "DB10.Door_Control.{}"
     },
-    "elevator_call_trigger": {
-      "node_id": "ns=2;s=Elevator_Floor1.Call_Request",
-      "description": "Writable register to call the elevator to Floor 1"
-    },
-    "conveyor_handshake_ready": {
-      "node_id": "ns=4;i=1208",
-      "description": "Siemens PLC register indicating conveyor is ready to discharge load"
+    "conveyor_run_template": {
+      "ns": 2,
+      "node_id_pattern": "DB12.Conveyor_Run.{}"
     }
   }
 }

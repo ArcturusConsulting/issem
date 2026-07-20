@@ -17,9 +17,26 @@ pub struct Vda5050NodePosition {
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct Vda5050ActionParameter {
+    pub key: String,
+    pub value: serde_json::Value, // Dynamic JSON value type to handle mixed configurations cleanly
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Vda5050Action {
+    pub action_id: String,
+    pub action_type: String,
+    pub action_parameters: Option<Vec<Vda5050ActionParameter>>, // ◄ ADDED: Holds parameter lists (like door_id)
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Vda5050Node {
     pub node_id: String,
     pub node_position: Option<Vda5050NodePosition>,
+    #[serde(default)]
+    pub actions: Vec<Vda5050Action>, // ◄ ADDED: Aligns with the gateway's parsing loops!
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -27,13 +44,6 @@ pub struct Vda5050Node {
 pub struct Vda5050Order {
     pub order_id: String,
     pub nodes: Vec<Vda5050Node>,
-}
-
-#[derive(Deserialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct Vda5050Action {
-    pub action_id: String,
-    pub action_type: String, // "pause", "resume", "cancelOrder"
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
@@ -84,6 +94,7 @@ pub struct Vda5050State {
     pub manufacturer: String,
     pub serial_number: String,
     pub agv_position: AgvPosition,
+    pub last_node_id: String, // ◄ ADDED: Reports the last visited logical node ID to the WES
     pub battery_state: BatteryState,
     pub operating_mode: String, // "AUTOMATIC", "MANUAL", "TEACHIN"
     pub safety_state: SafetyState,
