@@ -9,11 +9,15 @@ spec:
   source:
     repoURL: ghcr.io/arcturusconsulting/charts
     chart: issem-gateway
-    targetRevision: 0.1.2
+    targetRevision: 0.1.3
     helm:
       parameters:
         - name: image.tag
-          value: 0.1.2
+          value: 0.1.3
+      values: |
+        hostPaths:
+          configJson: "/home/norrie/issem/deploy/config.json"
+          opcUaMappingJson: "/home/norrie/issem/deploy/opc_ua_mapping.json"
 
   destination:
     server: 'https://kubernetes.default.svc'

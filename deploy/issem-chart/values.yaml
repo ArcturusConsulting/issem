@@ -3,7 +3,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/arcturusconsulting/issem-gateway
-  tag: "0.1.2"
+  tag: "0.1.3"
   pullPolicy: IfNotPresent
 
 # Factory infrastructure endpoints
@@ -11,7 +11,7 @@ envOverrides:
   plcEndpoint: "opc.tcp://127.0.0.1:4840/"
   redisUrl: "redis://redis:6379" # DO NOT CHANGE!
 
-# [CONFIGURE THIS CORRECTLY!] Physical host paths on the client server rack
+# [CONFIGURE THIS CORRECTLY] "~" does NOT work! Write the absolute path such as /home/user/issem/...
 hostPaths:
-  configJson: "~/issem/deploy/config.json"
-  opcUaMappingJson: "~/issem/deploy/opc_ua_mapping.json"
+  configJson: "/home/user/issem/deploy/config.json"
+  opcUaMappingJson: "/home/user/issem/deploy/opc_ua_mapping.json"
