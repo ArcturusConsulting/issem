@@ -125,54 +125,33 @@ Because industrial PLC networks must remain separated from enterprise IT layers,
 
 ## 4. On-Premise Configuration & Local Quickstart
 
-ISSEM relies on localized external files to map physical assets and global application targets.
-Download and use the `deploy/` directory.
+ISSEM relies on localized external files to map physical assets and application targets to your local environment. All deployment files reside in the `deploy/` directory.
 
-### Configuration Layouts
+### Step 1: Configure Application Data Maps
 
-#### Config File Path Setting (`deploy/issem-chart/values.yaml`)
-Within `hostPaths`, set the correct paths of `configJson` and `opcUaMappingJson`in your local environment.
-#### ISSEM Image Selection (`deploy/argo-application.yaml`)
-Within `spec`, specify the tag of the image you want to use by setting `targetRevision` and the `value` of `helm`.
-#### Global Deployment Configuration (`deploy/config.json`)
-The global master config maps application channels, network interfaces, and targets.
-#### Industrial PLC Hardware Mapping (`deploy/opc_ua_mapping.json`)
-Allows on-site engineers to dynamically update PLC register templates without recompiling the Rust codebase.
+Before deploying, update the local configuration files to match your physical hardware setup:
+
+* **Global Deployment Config (`deploy/config.json`):**  
+  Maps application channels, network interfaces, and targets.
+* **Industrial PLC Hardware Mapping (`deploy/opc_ua_mapping.json`):**  
+  Defines PLC register mappings. Allows on-site engineers to update hardware addresses dynamically without recompiling the Rust codebase.
+
+### Step 2: Configure Deployment & Kubernetes Settings
+
+#### 1. File Path Mapping (`deploy/issem-chart/values.yaml`)
+Ensure Kubernetes can mount your local JSON config files into the ISSEM pod. Under `hostPaths`, set the absolute paths for `configJson` and `opcUaMappingJson` pointing to their locations on the host machine.
+
+#### 2. Image & Deployment Versioning
+Depending on how you deploy ISSEM, configure your versions as follows:
+
+* **Deploying with Argo CD (`deploy/argo-application.yaml`):**  
+  Set `targetRevision` to the desired Helm chart version (e.g., `0.1.0`). If overriding the container image tag explicitly, update `image.tag` under `helm.parameters`.
+* **Deploying directly with Helm (`deploy/issem-chart/values.yaml`):**  
+  Set `image.tag` to the desired container image version stored in GHCR.
 
 ---
 
-## 5. Implementation Roadmap & Repository Blueprint
-
-### Workspace Crate Modular Subsystems
-
-To ensure strict separation of concerns and eliminate protocol compile-time interference, ISSEM is architected as a decoupled multi-crate Rust workspace:
-
-* **`issem_core` (Transactional Engine Core):** The engine's transactional brain. It is entirely protocol-agnostic. It consumes internal Rust primitives passed through bounded memory channels and manages state updates via the Redis client abstraction.
-* **`adapter_vda5050` (Northbound Enterprise Gateway):** Owns the MQTT connection. Spawns an asynchronous `rumqttc` event loop to manage enterprise broker handshakes, ingests inbound string payloads, and validates structural semantics against the VDA5050 specification.
-* **`driver_zenoh_ros2` (Southbound Robotics Driver):** Owns the Zenoh session. Listens to high-speed binary streams, deserializes the CDR bytes (handling nested `[[f64; 6]; 6]` covariance arrays natively, bypassing Serde's standard 32-element array constraint), and handles outgoing waypoint injection.
-* **`adapter_opc_ua` (East/West Peripheral Sync):** Hosts a high-speed asynchronous industrial OPC UA client stack to interface with factory PLCs. It handles physical hardware handshakes (e.g., automated safety gates and conveyor lines) before letting an AMR complete a payload handover.
-
-### Redis Schema Design & Shared State Topology
-ISSEM structures its key space dynamically using deterministic namespaces keyed by the unique AMR serial number:
-
-```text
-amr:fleet:active_serials         -> Set [ "Kashiwa-Robot-001", "Kashiwa-Robot-002" ]
-amr:{serialNumber}:pose          -> Hash { "x": "12.45", "y": "-8.21", "theta": "1.57" }
-amr:{serialNumber}:active_goal   -> String (Serialized CDR PoseStamped Binary string)
-amr:{serialNumber}:lifecycle     -> Hash { "mode": "AUTOMATIC", "paused": "false" }
-```
-
-To guarantee absolute durability against unexpected facility power failures, the accompanying container system runs a hybrid, high-frequency logging persistence loop inside the K3s storage volume:
-
-```ini
-# redis.conf
-appendonly yes
-appendfsync everysec
-save 300 1
-```
----
-
-## 6. Production Deployment & Cluster Installation
+## 5. Production Deployment & Cluster Installation
 
 This section details the step-by-step setup required to provision a clean enterprise host edge server rack running a standard Linux distribution (e.g., Ubuntu LTS) from absolute scratch.
 
@@ -245,15 +224,34 @@ Open a browser tab and navigate to `https://localhost:8080`, enter the Username 
 
 ---
 
-## 7. Useful commands
+## 6. Useful commands
+### Stopping the Argo CD server
+```bash
+sudo k3s kubectl scale deployment argocd-server -n argocd --replicas=0
+```
+
+### Stop the Local K3s Cluster Service Entirely
+```bash
+sudo systemctl stop k3s
+```
+
+### Start K3s Cluster Service
+```bash
+sudo systemctl start k3s
+sudo k3s kubectl get nodes
+```
+
+### Restart the Argo CD server
+```bash
+sudo k3s kubectl -n argocd rollout restart deployment argocd-server
+sudo k3s kubectl -n argocd rollout status deployment argocd-server
+sudo k3s kubectl scale deployment argocd-server -n argocd --replicas=1
+```
+
 ### Applying changes in argo-application.yaml
 ```bash
 # 1. Apply the updated manifest
 sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
-
-# 2. Tell Argo CD to refresh instantly (use the app name defined in your metadata.name above)
-sudo k3s kubectl patch application issem-gateway -n argocd --type merge \
-  -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
 ```
 
 ### Checking logs of the container
@@ -279,7 +277,7 @@ sudo k3s kubectl delete pod -l app=issem-core
 
 ---
 
-## 8. Local Sandbox Verification & Verification Loop
+## 7. Local Sandbox Verification & Verification Loop
 
 To run the complete stateless cloud-native suite in your local sandbox cluster environment, follow the steps below:
 

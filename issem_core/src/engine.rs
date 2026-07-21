@@ -13,7 +13,6 @@ use adapter_vda5050::NorthboundEvent;
 use adapter_vda5050::schema::{Vda5050State, AgvPosition, BatteryState, SafetyState};
 use driver_zenoh_ros2::SouthboundCommand;
 
-// Import the East/West channel types cleanly
 use adapter_opc_ua::PeripheralRequest;
 
 use crate::MasterSystemConfig;
@@ -26,7 +25,7 @@ pub async fn start_core_orchestrator(
     mqtt_client: AsyncClient,
     mut northbound_receiver: Receiver<NorthboundEvent>,
     southbound_sender: Sender<SouthboundCommand>,
-    peripheral_sender: Sender<PeripheralRequest>, // UPDATED: Mounted East/West sender handle
+    peripheral_sender: Sender<PeripheralRequest>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     info!("🧠 [Core Engine] Transactional compute loops activated with East/West interlocks.");
 
@@ -58,7 +57,7 @@ pub async fn start_core_orchestrator(
                 let lifecycle: std::collections::HashMap<String, String> = state_conn.hgetall(&lifecycle_key).await.unwrap_or_default();
                 
                 // Fetch the last successfully reached node ID from Redis
-                let last_node_id = crate::state_manager::get_last_node(serial, &mut state_conn).await; // ◄ ADDED
+                let last_node_id = crate::state_manager::get_last_node(serial, &mut state_conn).await;
 
                 let x: f64 = coords.get("x").and_then(|v| v.parse().ok()).unwrap_or(0.0);
                 let y: f64 = coords.get("y").and_then(|v| v.parse().ok()).unwrap_or(0.0);
@@ -83,7 +82,7 @@ pub async fn start_core_orchestrator(
                         position_initialized: true,
                         map_id: bcast_config.warehouse_map_id.clone(),
                     },
-                    last_node_id, // ◄ ADDED: Pack it dynamically into the state frame
+                    last_node_id,
                     battery_state: BatteryState {
                         battery_charge: 100.0, 
                         battery_voltage: 24.0,
@@ -135,7 +134,7 @@ pub async fn start_core_orchestrator(
                     info!("🧠 [Core Engine] Routing path target [{}] validated for asset [{}]", order_id, serial_number);
 
                     cache_active_goal(&serial_number, x, y, theta, &mut local_redis_conn).await;
-                    crate::state_manager::cache_target_node(&serial_number, &node_id, &mut local_redis_conn).await; // ◄ ADDED
+                    crate::state_manager::cache_target_node(&serial_number, &node_id, &mut local_redis_conn).await;
 
                     if let Some(action) = pending_action {
                         info!("🚧 [Action Interlock] Order specifies explicit VDA 5050 peripheral action: [{}]", action);

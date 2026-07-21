@@ -42,7 +42,6 @@ pub struct PoseWithCovariance {
     pub covariance: [[f64; 6]; 6],
 }
 
-/// Mimics `geometry_msgs/msg/PoseWithCovarianceStamped` for AMCL localization updates.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct PoseWithCovarianceStamped {
     pub header: RosHeader,
@@ -69,7 +68,6 @@ pub struct TwistWithCovariance {
     pub covariance: [[f64; 6]; 6],
 }
 
-/// Mimics `nav_msgs/msg/Odometry` for high-frequency uplink telemetry processing.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct RosOdometry {
     pub header: RosHeader,
@@ -78,7 +76,6 @@ pub struct RosOdometry {
     pub twist: TwistWithCovariance,
 }
 
-/// Mimics `geometry_msgs/msg/PoseStamped` for TurtleBot 4 target goal injection.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct PoseStamped {
     pub header: RosHeader,

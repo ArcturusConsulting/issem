@@ -9,11 +9,11 @@ spec:
   source:
     repoURL: ghcr.io/arcturusconsulting/charts
     chart: issem-gateway
-    targetRevision: 0.1.0
+    targetRevision: 0.1.2
     helm:
       parameters:
         - name: image.tag
-          value: 0.1.0
+          value: 0.1.2
 
   destination:
     server: 'https://kubernetes.default.svc'

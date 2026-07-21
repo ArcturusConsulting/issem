@@ -35,14 +35,14 @@ spec:
         volumeMounts:
         - name: global-config
           mountPath: /app/config.json
-        - name: opc-mapping             # ◄ 1. Mounts the file inside the /app directory
+        - name: opc-mapping
           mountPath: /app/opc_ua_mapping.json
       volumes:
       - name: global-config
         hostPath:
           path: {{ .Values.hostPaths.configJson }}
           type: File
-      - name: opc-mapping             # ◄ 2. References the mapping file's physical host path
+      - name: opc-mapping
         hostPath:
           path: {{ .Values.hostPaths.opcUaMappingJson }}
           type: File

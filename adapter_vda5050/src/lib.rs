@@ -22,7 +22,7 @@ pub enum NorthboundEvent {
         manufacturer: String,
         serial_number: String,
         order_id: String,
-        node_id: String, // ◄ ADDED: Transports the target logical node ID
+        node_id: String,
         x: f64,
         y: f64,
         theta: f64,
@@ -32,6 +32,6 @@ pub enum NorthboundEvent {
         manufacturer: String,
         serial_number: String,
         action_id: String,
-        action_type: String, // "pause", "resume", "cancelOrder"
+        action_type: String,
     },
 }
