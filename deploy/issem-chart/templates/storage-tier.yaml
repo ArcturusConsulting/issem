@@ -23,14 +23,14 @@ spec:
 
 ---
 
-# apiVersion: v1
-# kind: Service
-# metadata:
-#   name: redis
-#   namespace: default
-# spec:
-#   ports:
-#   - port: 6379
-#     targetPort: redis-port
-#   selector:
-#     app: redis-tier
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: default
+spec:
+  ports:
+  - port: 6379
+    targetPort: redis-port
+  selector:
+    app: redis-tier

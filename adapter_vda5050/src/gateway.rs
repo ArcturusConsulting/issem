@@ -4,6 +4,7 @@ use std::error::Error;
 use log::{info, warn, error};
 use rumqttc::{MqttOptions, AsyncClient, QoS, Event, Packet};
 use tokio::sync::mpsc::Sender;
+use tokio::time::{sleep, Duration};
 
 use crate::{MqttGatewayConfig, NorthboundEvent};
 use crate::schema::{Vda5050Order, Vda5050InstantActions};
@@ -22,7 +23,7 @@ pub async fn start_mqtt_gateway(
         &config.broker_url, 
         config.broker_port,
     );
-    mqtt_options.set_keep_alive(std::time::Duration::from_secs(5));
+    mqtt_options.set_keep_alive(Duration::from_secs(5));
 
     // Instantiate client connection handles with a conservative bounded buffer channel cap
     let (mqtt_client, mut event_loop) = AsyncClient::new(mqtt_options, 100);
@@ -45,104 +46,112 @@ pub async fn start_mqtt_gateway(
     tokio::spawn(async move {
         info!("📥 [Northbound Gateway] Event polling worker thread successfully initialized.");
 
-        while let Ok(notification) = event_loop.poll().await {
-            if let Event::Incoming(Packet::Publish(packet)) = notification {
-                
-                // Break down topic path strings to extract metadata tokens dynamically
-                // Expected format layout: vda5050/{version}/{manufacturer}/{serialNumber}/{messageType}
-                let topic_tokens: Vec<&str> = packet.topic.split('/').collect();
-                if topic_tokens.len() < 5 {
-                    warn!("⚠️ [Gateway] Dropped structural routing anomaly: '{}'", packet.topic);
-                    continue;
-                }
-
-                let manufacturer = topic_tokens[2].to_string();
-                let serial_number = topic_tokens[3].to_string();
-                let message_type = topic_tokens[4];
-
-                // Corporate security perimeter check: Enforce multi-vendor boundary filters
-                if !filter_manufacturer.is_empty() && manufacturer != filter_manufacturer {
-                    continue;
-                }
-
-                // 4. Ingest and route structural payloads based on spec variants
-                match message_type {
-                    "order" => {
-                        match serde_json::from_slice::<Vda5050Order>(&packet.payload) {
-                            Ok(order) => {
-                                // Extract the first valid targeted waypoint node containing coordinates
-                                if let Some(target_node) = order.nodes.iter().find(|n| n.node_position.is_some()) {
-                                    let position = target_node.node_position.as_ref().unwrap();
-                                    
-                                    // ==============================================================================
-                                    // 🔌 DEFENSIVE VDA 5050 ACTION PARSING
-                                    // ==============================================================================
-                                    // Inspect the waypoint node's actions for any "clearHighSpeedDoor" tasks.
-                                    // If found, safely extract its "door_id" parameter.
-                                    let pending_action = target_node.actions.iter()
-                                        .find(|a| a.action_type == "clearHighSpeedDoor")
-                                        .and_then(|a| {
-                                            a.action_parameters.as_ref()?.iter()
-                                                .find(|p| p.key == "door_id")
-                                                .and_then(|p| p.value.as_str().map(String::from))
-                                        });
-
-                                    let event = NorthboundEvent::OrderReceived {
-                                        manufacturer: manufacturer.clone(),
-                                        serial_number: serial_number.clone(),
-                                        order_id: order.order_id,
-                                        node_id: target_node.node_id.clone(), // ◄ ADDED: Extract the node ID string
-                                        x: position.x,
-                                        y: position.y,
-                                        theta: position.theta,
-                                        pending_action,
-                                    };
-
-                                    if let Err(err) = event_sender.send(event).await {
-                                        error!("❌ [Gateway] Downstream core communications link failure: {}", err);
-                                    }
-                                } else {
-                                    warn!("⚠️ [Gateway] Received order [{}] without matching target spatial coordinates.", order.order_id);
-                                }
-                            }
-                            Err(err) => {
-                                error!("❌ [Gateway] JSON schema violation on order pipeline: {}", err);
-                            }
+        // ◄ FIXED: Use an infinite loop to allow rumqttc to auto-reconnect on transient errors
+        loop {
+            match event_loop.poll().await {
+                Ok(notification) => {
+                    if let Event::Incoming(Packet::Publish(packet)) = notification {
+                        
+                        // Break down topic path strings to extract metadata tokens dynamically
+                        // Expected format layout: vda5050/{version}/{manufacturer}/{serialNumber}/{messageType}
+                        let topic_tokens: Vec<&str> = packet.topic.split('/').collect();
+                        if topic_tokens.len() < 5 {
+                            warn!("⚠️ [Gateway] Dropped structural routing anomaly: '{}'", packet.topic);
+                            continue;
                         }
-                    }
 
-                    "instantAction" => {
-                        match serde_json::from_slice::<Vda5050InstantActions>(&packet.payload) {
-                            Ok(instant_actions) => {
-                                // Iterate across array fields to unpack bundled priority directives
-                                for action in instant_actions.actions {
-                                    let event = NorthboundEvent::InstantActionReceived {
-                                        manufacturer: manufacturer.clone(),
-                                        serial_number: serial_number.clone(),
-                                        action_id: action.action_id,
-                                        action_type: action.action_type,
-                                    };
+                        let manufacturer = topic_tokens[2].to_string();
+                        let serial_number = topic_tokens[3].to_string();
+                        let message_type = topic_tokens[4];
 
-                                    if let Err(err) = event_sender.send(event).await {
-                                        error!("❌ [Gateway] Downstream core preemption signaling drop: {}", err);
-                                        break;
+                        // Corporate security perimeter check: Enforce multi-vendor boundary filters
+                        if !filter_manufacturer.is_empty() && manufacturer != filter_manufacturer {
+                            continue;
+                        }
+
+                        // 4. Ingest and route structural payloads based on spec variants
+                        match message_type {
+                            "order" => {
+                                match serde_json::from_slice::<Vda5050Order>(&packet.payload) {
+                                    Ok(order) => {
+                                        // Extract the first valid targeted waypoint node containing coordinates
+                                        if let Some(target_node) = order.nodes.iter().find(|n| n.node_position.is_some()) {
+                                            let position = target_node.node_position.as_ref().unwrap();
+                                            
+                                            // ==============================================================================
+                                            // 🔌 DEFENSIVE VDA 5050 ACTION PARSING
+                                            // ==============================================================================
+                                            // Inspect the waypoint node's actions for any "clearHighSpeedDoor" tasks.
+                                            // If found, safely extract its "door_id" parameter.
+                                            let pending_action = target_node.actions.iter()
+                                                .find(|a| a.action_type == "clearHighSpeedDoor")
+                                                .and_then(|a| {
+                                                    a.action_parameters.as_ref()?.iter()
+                                                        .find(|p| p.key == "door_id")
+                                                        .and_then(|p| p.value.as_str().map(String::from))
+                                                });
+
+                                            let event = NorthboundEvent::OrderReceived {
+                                                manufacturer: manufacturer.clone(),
+                                                serial_number: serial_number.clone(),
+                                                order_id: order.order_id,
+                                                node_id: target_node.node_id.clone(),
+                                                x: position.x,
+                                                y: position.y,
+                                                theta: position.theta,
+                                                pending_action,
+                                            };
+
+                                            if let Err(err) = event_sender.send(event).await {
+                                                error!("❌ [Gateway] Downstream core communications link failure: {}", err);
+                                            }
+                                        } else {
+                                            warn!("⚠️ [Gateway] Received order [{}] without matching target spatial coordinates.", order.order_id);
+                                        }
+                                    }
+                                    Err(err) => {
+                                        error!("❌ [Gateway] JSON schema violation on order pipeline: {}", err);
                                     }
                                 }
                             }
-                            Err(err) => {
-                                error!("❌ [Gateway] JSON schema violation on instantAction preemption: {}", err);
+
+                            "instantAction" => {
+                                match serde_json::from_slice::<Vda5050InstantActions>(&packet.payload) {
+                                    Ok(instant_actions) => {
+                                        // Iterate across array fields to unpack bundled priority directives
+                                        for action in instant_actions.actions {
+                                            let event = NorthboundEvent::InstantActionReceived {
+                                                manufacturer: manufacturer.clone(),
+                                                serial_number: serial_number.clone(),
+                                                action_id: action.action_id,
+                                                action_type: action.action_type,
+                                            };
+
+                                            if let Err(err) = event_sender.send(event).await {
+                                                error!("❌ [Gateway] Downstream core preemption signaling drop: {}", err);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        error!("❌ [Gateway] JSON schema violation on instantAction preemption: {}", err);
+                                    }
+                                }
+                            }
+
+                            unknown => {
+                                warn!("ℹ️ [Gateway] Received unhandled enterprise spec message type token: '{}'", unknown);
                             }
                         }
                     }
-
-                    unknown => {
-                        warn!("ℹ️ [Gateway] Received unhandled enterprise spec message type token: '{}'", unknown);
-                    }
+                }
+                Err(err) => {
+                    // ◄ FIXED: Log transient network connection failures and let rumqttc retry
+                    warn!("⚠️ [Northbound Gateway] Connection issue: {}. Retrying...", err);
+                    sleep(Duration::from_millis(1000)).await;
                 }
             }
         }
-
-        warn!("🛑 [Northbound Gateway] Asynchronous network network pipeline disconnected.");
     });
 
     // Return active multi-client handle back up to the master engine orchestrator

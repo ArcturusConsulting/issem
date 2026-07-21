@@ -13,5 +13,5 @@ envOverrides:
 
 # [CONFIGURE THIS CORRECTLY] "~" does NOT work! Write the absolute path such as /home/user/issem/...
 hostPaths:
-  configJson: "/home/norrie/issem/deploy/config.json"
-  opcUaMappingJson: "/home/norrie/issem/deploy/opc_ua_mapping.json"
+  configJson: "/home/user/issem/deploy/config.json"
+  opcUaMappingJson: "/home/user/issem/deploy/opc_ua_mapping.json"
