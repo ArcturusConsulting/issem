@@ -23,14 +23,14 @@ spec:
 
 ---
 
-apiVersion: v1
-kind: Service
-metadata:
-  name: redis                  # ◄ MUST match the serviceName in your StatefulSet
-  namespace: default
-spec:
-  ports:
-  - port: 6379
-    targetPort: redis-port     # ◄ Matches the containerPort name in your StatefulSet
-  selector:
-    app: redis-tier            # ◄ Matches the labels on your Redis pod
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: redis
+#   namespace: default
+# spec:
+#   ports:
+#   - port: 6379
+#     targetPort: redis-port
+#   selector:
+#     app: redis-tier

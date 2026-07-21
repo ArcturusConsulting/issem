@@ -18,7 +18,7 @@ use opcua::types::*;
 #[derive(Deserialize, Debug, Clone)]
 pub struct OpcSignalTemplate {
     pub ns: u16,
-    pub node_id_pattern: String, // ◄ Matches: "DB10.Door_Control.{}"
+    pub node_id_pattern: String,
 }
 
 #[derive(Deserialize, Debug, Clone)]

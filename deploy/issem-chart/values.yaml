@@ -3,7 +3,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/arcturusconsulting/issem-gateway
-  tag: "0.0.0-snapshot" # IGNORE THIS: This is only for maintainance.
+  tag: "0.1.2"
   pullPolicy: IfNotPresent
 
 # Factory infrastructure endpoints
