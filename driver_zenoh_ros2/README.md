@@ -16,7 +16,7 @@ By decoupling these mechanics into a dedicated crate, the core transactional eng
                                                                      │ Inbound Command
                                                                      ▼ (Internal Enum)
  ┌────────────────────────┐         Zenoh Protocol        ┌─────────────────────┐
- │    Physical Fleet     │◄──────────────────────────────┤  driver_zenoh_ros2  │
+ │    Physical Fleet      │◄──────────────────────────────┤  driver_zenoh_ros2  │
  │ (TurtleBot 4 / Nav2)   ├──────────────────────────────►│ (Southbound Driver) │
  └────────────────────────┘      (Binary Telemetry)       └──────────┬──────────┘
                                                                      │

@@ -45,6 +45,7 @@ jobs:
       with:
         context: .
         push: true
+        provenance: false
         tags: |
           ghcr.io/arcturusconsulting/issem-gateway:${{ env.APP_VERSION }}
           ghcr.io/arcturusconsulting/issem-gateway:latest

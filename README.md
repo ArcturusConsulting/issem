@@ -208,7 +208,7 @@ Apply the root application manifest from your deployment folder to initiate the 
 sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
 ```
 
-### 4. Create Local Trusted HTTPS Connection (Optional, recommended for local UI)
+### 4. Create Local Trusted HTTPS Connection (Optional but recommended for local UI)
 
 To avoid browser self-signed TLS warnings, generate locally trusted certificates using `mkcert` and inject them into the Argo CD secret store:
 
