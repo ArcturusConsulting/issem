@@ -131,7 +131,9 @@ Download and use the `deploy/` directory.
 ### Configuration Layouts
 
 #### Config File Path Setting (`deploy/issem-chart/values.yaml`)
+Within `hostPaths`, set the correct paths of `configJson` and `opcUaMappingJson`in your local environment.
 #### ISSEM Image Selection (`deploy/argo-application.yaml`)
+Within `spec`, specify the tag of the image you want to use by setting `targetRevision` and the `value` of `helm`.
 #### Global Deployment Configuration (`deploy/config.json`)
 The global master config maps application channels, network interfaces, and targets.
 #### Industrial PLC Hardware Mapping (`deploy/opc_ua_mapping.json`)
@@ -206,17 +208,40 @@ Apply the root application manifest from your deployment folder to initiate the 
 sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
 ```
 
+### 4. Create Local Trusted HTTPS Connection (Optional but recommended for local UI)
+
+To avoid browser self-signed TLS warnings, generate locally trusted certificates using `mkcert` and inject them into the Argo CD secret store:
+
+```bash
+# Install mkcert and local trust store dependencies
+sudo apt update && sudo apt install -y libnss3-tools mkcert
+mkcert -install
+
+# Generate certificates for localhost
+mkcert 127.0.0.1 localhost
+
+# Replace default Argo CD secret with trusted TLS certificate
+sudo k3s kubectl delete secret argocd-secret -n argocd --ignore-not-found
+sudo k3s kubectl create secret tls argocd-secret -n argocd \
+  --cert=127.0.0.1+1.pem \
+  --key=127.0.0.1+1-key.pem
+
+# Restart Argo CD server to apply changes
+sudo k3s kubectl -n argocd rollout restart deployment argocd-server
+sudo k3s kubectl -n argocd rollout status deployment argocd-server
+```
+
 ### 5. Access the Local Management Console
 To monitor application health states visually, retrieve the secure access token and expose the dashboard layout:
 
 ```bash
-# Retrieve the auto-generated admin password
+# 1. Retrieve the auto-generated admin password (username: admin)
 sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 
-# Establish a secure port-forward tunnel to access the UI locally
+# 2. Establish a secure port-forward tunnel to access the UI locally
 sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
-Open a browser tab and navigate to `https://localhost:8080` (Username: `admin`) to view the running container tree.
+Open a browser tab and navigate to `https://localhost:8080`, enter the Username (`admin`) and the retrieved password to view the running container tree.
 
 ---
 
