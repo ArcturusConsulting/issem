@@ -10,7 +10,7 @@ The framework intercepts industrial **VDA5050 JSON payloads over MQTT**, maps hi
 
 ---
 
-## 1. Value Proposition & Project Context
+## 1. Value Proposition
 
 In modern industrial logistics hubs (such as third-party logistics networks and heavy manufacturing plants in Japan), enterprise IT systems mandate strict **VDA5050 compliance over MQTT** to eliminate vendor lock-in. Conversely, modern AMRs run on highly dynamic, binary network graphs like **ROS 2 Jazzy and Zenoh/DDS**. 
 
@@ -28,17 +28,6 @@ To meet the strict industrial mandate of **「止まらない現場」 (Tomarana
 * **Single-Vendor AMR Fleets:** Operations deploying between 10 to 50 custom ROS 2/Nav2 mobile platforms on open warehouse floors where heavy spatial traffic deconfliction frameworks represent massive operational and computational overkill.
 * **Legacy Corporate Integrations:** Facilities governed by strict enterprise IT compliance mandates where the top-level orchestrator is a traditional commercial WES (e.g., SAP EWM, Siemens Logistics, Daifuku, or Swisslog) that requires direct VDA5050 compliance out-of-the-box.
 * **Hardware-Constrained Robotics Teams:** Teams building highly optimized AMRs that need to preserve 100% of their onboard edge computing power for localized navigation and computer vision tasks rather than parsing heavy corporate JSON payloads over volatile factory Wi-Fi networks.
-
-### Strategic Market Positioning
-
-| Strategic Vector | Open-RMF Fleet System | InOrbit Edge Connector | ISSEM Gateway (This Project) |
-| :--- | :--- | :--- | :--- |
-| **Execution Domain** | Server Rack (Multi-Process Suite) | Physical Robot (Edge Node) | **Server Rack (Stateless K3s Pod)** |
-| **Primary Code Stack** | C++ / ROS 2 / Python | C++ / ROS 2 / Python | **Pure Rust / Zenoh / Redis** |
-| **System Footprint** | Heavy (Requires Full ROS 2 Stack) | Medium (Edge Compute Overhead) | **Ultra-Lightweight Container** |
-| **Northbound Interface**| Proprietary WebSockets / REST | Standard VDA5050 over MQTT | **Standard VDA5050 over MQTT** |
-| **Network Efficiency** | Heavy DDS Multicast Traffic | Heavy JSON Payload over Wi-Fi | **Lean Binary Zenoh Streams over Wi-Fi** |
-| **OT/PLC Interlocking** | Complex (Requires separate RMF Adapters) | None (Requires custom edge scripts) | **Built-in Stateless OPC UA Adapter** |
 
 ---
 
@@ -61,7 +50,7 @@ ISSEM functions as the centralized multi-tenant traffic router deployed on a loc
   │   │ │  adapter_opc_ua     ├─┼──────────┼────────────┼──┼─────►│   │   OPC UA Server  │   │
   │   │ └─────────────────────┘ │          └────────────┘  │      │   └──────────────────┘   │
   │   └─────────────┬───────────┘                          │      └──────────────────────────┘
-                    │                                               
+  └─────────────────┼──────────────────────────────────────┘        
                     │ Zenoh Binary Protocol (Wi-Fi)                 
                     │                                               
   ┌─────────────────▼──────────────────────────────────────┐        
@@ -137,43 +126,16 @@ Because industrial PLC networks must remain separated from enterprise IT layers,
 ## 4. On-Premise Configuration & Local Quickstart
 
 ISSEM relies on localized external files to map physical assets and global application targets.
+Download and use the `deploy/` directory.
 
 ### Configuration Layouts
 
+#### Config File Path Setting (`deploy/issem-chart/values.yaml`)
+#### ISSEM Image Selection (`deploy/argo-application.yaml`)
 #### Global Deployment Configuration (`deploy/config.json`)
-The global master config maps application channels, network interfaces, and targets:
-```json
-{
-  "zenoh_listen_host": "0.0.0.0",
-  "zenoh_listen_port": 7447,
-  "redis_connection_url": "redis://127.0.0.1:6379",
-  "mqtt_broker_url": "127.0.0.1",
-  "mqtt_broker_port": 1883,
-  "vda5050_protocol_version": "2.0.0",
-  "client_manufacturer": "Techvico",
-  "target_amr_serials": ["AMR-001", "AMR-002"],
-  "warehouse_map_id": "Kashiwa_Hub_F2",
-  "opc_ua_plc_url": "opc.tcp://192.168.1.50:4840",
-  "opc_ua_mapping_path": "opc_ua_mapping.json"
-}
-```
-
+The global master config maps application channels, network interfaces, and targets.
 #### Industrial PLC Hardware Mapping (`deploy/opc_ua_mapping.json`)
-Allows on-site engineers to dynamically update PLC register templates without recompiling the Rust codebase:
-```json
-{
-  "signals": {
-    "door_control_template": {
-      "ns": 2,
-      "node_id_pattern": "DB10.Door_Control.{}"
-    },
-    "conveyor_run_template": {
-      "ns": 2,
-      "node_id_pattern": "DB12.Conveyor_Run.{}"
-    }
-  }
-}
-```
+Allows on-site engineers to dynamically update PLC register templates without recompiling the Rust codebase.
 
 ---
 
@@ -187,65 +149,6 @@ To ensure strict separation of concerns and eliminate protocol compile-time inte
 * **`adapter_vda5050` (Northbound Enterprise Gateway):** Owns the MQTT connection. Spawns an asynchronous `rumqttc` event loop to manage enterprise broker handshakes, ingests inbound string payloads, and validates structural semantics against the VDA5050 specification.
 * **`driver_zenoh_ros2` (Southbound Robotics Driver):** Owns the Zenoh session. Listens to high-speed binary streams, deserializes the CDR bytes (handling nested `[[f64; 6]; 6]` covariance arrays natively, bypassing Serde's standard 32-element array constraint), and handles outgoing waypoint injection.
 * **`adapter_opc_ua` (East/West Peripheral Sync):** Hosts a high-speed asynchronous industrial OPC UA client stack to interface with factory PLCs. It handles physical hardware handshakes (e.g., automated safety gates and conveyor lines) before letting an AMR complete a payload handover.
-
-### Repository Directory Topology
-
-```text
-issem_workspace/
-├── Cargo.toml                      # Master workspace configuration
-├── redis.conf                      # Hyper-durable persistence configuration
-│
-├── deploy/                         # Cloud-Native K3s Edge Manifests
-│   ├── 01-config.yaml
-│   ├── 02-storage-tier.yaml        # Resilient Redis storage instance & service definitions
-│   └── 03-orchestrator.yaml        # Stateless ISSEM core engine deployment with host mounts
-│
-├── issem_core/                     # Transactional Engine Core
-│   ├── Cargo.toml                  # Encapsulates redis driver (tokio-comp)
-│   └── src/
-│       ├── lib.rs
-│       ├── state_manager.rs        # Redis client infrastructure & cache commands
-│       └── engine.rs               # Multi-tenant route & override handlers
-│
-├── adapter_vda5050/                # Northbound Enterprise Gateway
-│   ├── Cargo.toml                  # Encapsulates rumqttc client loop
-│   └── src/
-│       ├── lib.rs
-│       ├── mqtt_client.rs          # Asynchronous MQTT packet subscriber
-│       └── schema.rs               # VDA5050 JSON validation primitives
-│
-├── driver_zenoh_ros2/              # Southbound Robotics Driver
-│   ├── Cargo.toml                  # Encapsulates zenoh & cdr engines
-│   └── src/
-│       ├── lib.rs
-│       ├── zenoh_session.rs        # High-speed telemetry ingestion runtime
-│       └── ros_msg.rs              # Advanced CDR serialization protocols
-│
-└── adapter_opc_ua/                 # East/West Peripheral Sync
-    ├── Cargo.toml                  # Encapsulates industrial opcua crates
-    └── src/
-        ├── lib.rs
-        └── opcua_client.rs         # Asynchronous PLC connection handshakers
-```
-
-### Master Workspace `Cargo.toml`
-
-```toml
-[workspace]
-members = [
-    "issem_core",
-    "adapter_vda5050",
-    "driver_zenoh_ros2",
-    "adapter_opc_ua"
-]
-resolver = "2"
-
-[workspace.dependencies]
-tokio = { version = "1.38", features = ["full"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-log = "0.4"
-```
 
 ### Redis Schema Design & Shared State Topology
 ISSEM structures its key space dynamically using deterministic namespaces keyed by the unique AMR serial number:
@@ -265,36 +168,93 @@ appendonly yes
 appendfsync everysec
 save 300 1
 ```
+---
+
+## 6. Production Deployment & Cluster Installation
+
+This section details the step-by-step setup required to provision a clean enterprise host edge server rack running a standard Linux distribution (e.g., Ubuntu LTS) from absolute scratch.
+
+### 1. Provision the Edge Kubernetes Engine (K3s)
+Install the lightweight, production-grade Kubernetes runtime directly onto the host server node. This script automatically configures container runtimes, networking layers, and local storage providers:
+
+```bash
+# Download and install K3s
+curl -sfL https://get.k3s.io | sh -
+
+# Verify the local node transitions to a 'Ready' state
+sudo k3s kubectl get nodes
+```
+
+### 2. Deploy the GitOps Controller (Argo CD)
+Install the continuous delivery operator inside an isolated management namespace within the cluster:
+
+```bash
+# Create the dedicated namespace
+sudo k3s kubectl create namespace argocd
+
+# Execute the deployment using the server-side validation flag
+sudo k3s kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Monitor deployment until all pods report a 'Running' status
+sudo k3s kubectl get pods -n argocd --watch
+```
+
+### 3. Initialize the Master GitOps Control Application
+Apply the root application manifest from your deployment folder to initiate the cluster pull engine:
+
+```bash
+sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
+```
+
+### 5. Access the Local Management Console
+To monitor application health states visually, retrieve the secure access token and expose the dashboard layout:
+
+```bash
+# Retrieve the auto-generated admin password
+sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+
+# Establish a secure port-forward tunnel to access the UI locally
+sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+Open a browser tab and navigate to `https://localhost:8080` (Username: `admin`) to view the running container tree.
 
 ---
 
-## 6. Phased Development Roadmap & Status
+## 7. Useful commands
+### Applying changes in argo-application.yaml
+```bash
+# 1. Apply the updated manifest
+sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
 
-### Phase 1: Workspace Infrastructure & Telemetry Uplink ── `[COMPLETED]`
-* Root workspace directory setup and layout of the modular compilation crates.
-* Implementation of the asynchronous `rumqttc` network runtime for continuous Northbound traffic management.
-* Mapping of 5 Hz throttled state generation loops feeding positional tracking to the corporate layer.
+# 2. Tell Argo CD to refresh instantly (use the app name defined in your metadata.name above)
+sudo k3s kubectl patch application issem-gateway -n argocd --type merge \
+  -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+```
 
-### Phase 2: High-Fidelity Binary Serialization ── `[COMPLETED]`
-* Configuration of the little-endian `cdr` stream engine to process Zenoh networking layers.
-* **Technical Achievement:** Authored a custom multi-dimensional deserialization algorithm (`[[f64; 6]; 6]`) to parse AMCL's 36-element localization covariance matrix, natively bypassing Serde's structural 32-element array macro limitation.
+### Checking logs of the container
+```bash
+sudo k3s kubectl logs -f deployment/issem-gateway -n default --tail=50
+```
 
-### Phase 3: Stateful Downlink & Topic Preemption ── `[COMPLETED]`
-* Construction of VDA5050 path target parsing and coordinate translation maps.
-* **Technical Achievement:** Isolated and resolved the 31-byte Fast-DDS history lockup vulnerability. Developed an asynchronous topic preemption layer that catches instant `pause` payloads, retains the true route targets inside local thread-safe boundaries, and injects zero-distance halt parameters to safely freeze the robot mid-transit. A subsequent `resume` re-injects the original target cleanly.
+### Uninstalling k3s (for resetting from scratch)
+```bash
+# 1. Run the official uninstaller
+sudo /usr/local/bin/k3s-uninstall.sh
 
-### Phase 4: Shared State Externalization & Multi-Tenancy ── `[COMPLETED]`
-* Refactored localized memory collections into a robust, concurrent `redis` async wrapper.
-* Keyed global multi-tenant namespaces dynamically using unique AMR `{serialNumber}` paths.
-* Integrated a hyper-durable K3s edge configuration linking the stateless Rust application deployment to an isolated Redis storage tier.
+# 2. Obliterate lingering network interfaces, configurations, and cache directories
+sudo rm -rf /etc/rancher /var/lib/rancher /var/lib/kubelet /run/k3s ~/.kube
+```
 
-### Phase 5: East/West Physical PLC Handshaking ── `[COMPLETED]`
-* Built an active, asynchronous OPC UA client stack to interface with industrial factory PLCs.
-* Programmed automated safety handshakes (e.g., executing high-speed factory door bit-shifts for `Door_A1`) to clear zone interlocks before releasing AMR trajectories down to the ROS 2 southbound tier.
+### Inject a Node Failure (Resiliency Drill)
+Simulate a catastrophic hardware rack failure by deleting the running application pod mid-transit:
+```bash
+sudo k3s kubectl delete pod -l app=issem-core
+```
+*Observe that the cluster controller handles container failover immediately. A fresh instance initializes on an available thread slot, hits the live Redis storage cache, and resumes handling active AMR coordinates within 50 milliseconds with zero loss of execution history.*
 
 ---
 
-## 7. Local Sandbox Verification & Verification Loop
+## 8. Local Sandbox Verification & Verification Loop
 
 To run the complete stateless cloud-native suite in your local sandbox cluster environment, follow the steps below:
 
@@ -336,123 +296,3 @@ mosquitto_pub -h localhost -p 1883 \
     ]
   }'
 ```
-
-## 8. Production Deployment & Cluster Installation
-
-This section details the step-by-step setup required to provision a clean enterprise host edge server rack running a standard Linux distribution (e.g., Ubuntu LTS) from absolute scratch.
-
-### 1. Provision the Edge Kubernetes Engine (K3s)
-Install the lightweight, production-grade Kubernetes runtime directly onto the host server node. This script automatically configures container runtimes, networking layers, and local storage providers:
-
-```bash
-# Download and install K3s
-curl -sfL https://get.k3s.io | sh -
-
-# Verify the local node transitions to a 'Ready' state
-sudo k3s kubectl get nodes
-```
-
-### 2. Deploy the GitOps Controller (Argo CD)
-Install the continuous delivery operator inside an isolated management namespace within the cluster:
-
-```bash
-# Create the dedicated namespace
-sudo k3s kubectl create namespace argocd
-
-# 2. Execute the deployment using the server-side validation flag
-sudo k3s kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-# Monitor deployment until all pods report a 'Running' status
-sudo k3s kubectl get pods -n argocd --watch
-```
-
-### 3. Inject Secure B2B Client Access Credentials
-To allow the edge cluster to fetch your private Helm chart topologies and private container images from GitHub Packages without exposing your master account, inject the scoped, read-only Personal Access Token (PAT) directly into the secure cluster memory:
-
-```bash
-# 1. Create the credential mapping secret for Git access
-sudo k3s kubectl create secret generic private-ghcr-helm \
-  --namespace argocd \
-  --from-literal=type=helm \
-  --from-literal=name=ghcr-oci \
-  --from-literal=url=ghcr.io/arcturusconsulting/charts \
-  --from-literal=enableOCI=true \
-  --from-literal=username=ArcturusConsulting \
-  --from-literal=password="YOUR_PERSONAL_ACCESS_TOKEN" \
-  --dry-run=client -o yaml | sudo k3s kubectl apply -f -
-
-# 2. Label the secret object so Argo CD targets it for repository authentication
-sudo k3s kubectl label secret private-ghcr-helm \
-  --namespace argocd \
-  argocd.argoproj.io/secret-type=repository \
-  --overwrite
-  
-# 3. Inject the matching Docker Registry credential to pull private images from GHCR
-sudo k3s kubectl create secret docker-registry ghcr-auth \
-  --docker-server=ghcr.io \
-  --docker-username=ArcturusConsulting \
-  --docker-password=YOUR_PERSONAL_ACCESS_TOKEN \
-  --namespace default \
-  --dry-run=client -o yaml | sudo k3s kubectl apply -f -
-```
-
-### 4. Initialize the Master GitOps Control Application
-Apply the root application manifest from your deployment folder to initiate the cluster pull engine:
-
-```bash
-sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
-```
-
-### 5. Access the Local Management Console
-To monitor application health states visually, retrieve the secure access token and expose the dashboard layout:
-
-```bash
-# Retrieve the auto-generated admin password
-sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
-
-# Establish a secure port-forward tunnel to access the UI locally
-sudo k3s kubectl port-forward svc/argocd-server -n argocd 8080:443
-```
-Open a browser tab and navigate to `https://localhost:8080` (Username: `admin`) to view the running container tree.
-
-## 9. Useful commands
-### Applying changes in argo-application.yaml
-```bash
-# 1. Apply the updated manifest
-sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/argo-application.yaml
-
-# 2. Tell Argo CD to refresh instantly (use the app name defined in your metadata.name above)
-sudo k3s kubectl patch application issem-gateway -n argocd --type merge \
-  -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
-```
-
-### Check the credential
-```bash
-sudo k3s kubectl get secret private-ghcr-helm -n argocd --show-labels
-```
-
-### Delete the secret (in case mistakes were made)
-```bash
-sudo k3s kubectl delete secret private-ghcr-helm -n argocd
-```
-
-### Checking logs of the container
-```bash
-sudo k3s kubectl logs -f deployment/issem-gateway -n default --tail=50
-```
-
-### Uninstalling k3s (for resetting from scratch)
-```bash
-# 1. Run the official uninstaller
-sudo /usr/local/bin/k3s-uninstall.sh
-
-# 2. Obliterate lingering network interfaces, configurations, and cache directories
-sudo rm -rf /etc/rancher /var/lib/rancher /var/lib/kubelet /run/k3s ~/.kube
-```
-
-### Inject a Node Failure (Resiliency Drill)
-Simulate a catastrophic hardware rack failure by deleting the running application pod mid-transit:
-```bash
-sudo k3s kubectl delete pod -l app=issem-core
-```
-*Observe that the cluster controller handles container failover immediately. A fresh instance initializes on an available thread slot, hits the live Redis storage cache, and resumes handling active AMR coordinates within 50 milliseconds with zero loss of execution history.*

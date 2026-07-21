@@ -19,9 +19,6 @@ use driver_zenoh_ros2::command::start_command_downlink;
 
 use adapter_opc_ua::start_opc_ua_gateway;
 
-// Declare our clean license helper module
-mod license;
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     // 1. Initialize System Logger
@@ -33,12 +30,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     info!("🚀 Initializing ISSEM Framework (Industrial Stateless Server Orchestration Middleware)...");
 
     // ==============================================================================
-    // 🛡️ MODULAR LICENSING GATEWAY
-    // ==============================================================================
-    let claims = license::validate_startup_license()?;
-    license::spawn_background_validator();
-
-    // ==============================================================================
     // ⚙️ SYSTEM CONFIGURATION & INITIALIZATION SEQUENCE
     // ==============================================================================
     let mut config_file = File::open("config.json")
@@ -47,8 +38,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     config_file.read_to_string(&mut config_raw)?;
     
     let mut master_config: MasterSystemConfig = serde_json::from_str(&config_raw)?;
-
-    // [NOTE: The static check has been successfully migrated to dynamic lease admission control]
 
     if let Ok(env_redis) = std::env::var("ISSEM_REDIS_URL") {
         info!("🔄 On-Premise Override: Applying Redis target state storage URL from environment cluster config.");
@@ -87,13 +76,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         listen_host: master_config.zenoh_listen_host.clone(),
         listen_port: master_config.zenoh_listen_port,
         target_amr_serials: master_config.target_amr_serials.clone(),
-        max_amr_fleet: claims.max_amr_fleet, // ◄ Cryptographic limit dynamically handled in telemetry
     };
     start_telemetry_uplink(driver_config.clone(), &zenoh_session, redis_client.clone()).await?;
     start_command_downlink(driver_config, zenoh_session, redis_client.clone(), southbound_rx).await?;
     info!("🤖 Southbound driver background actors successfully mounted.");
 
-    // MODIFIED:
     start_opc_ua_gateway(
         master_config.opc_ua_plc_url.clone(), 
         master_config.opc_ua_mapping_path.clone(),

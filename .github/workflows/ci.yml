@@ -2,11 +2,11 @@ name: Industrial Release Pipeline
 
 on:
   push:
-    tags: [ "v*.*.*" ] # Triggers the build whenever you push a version tag
+    tags: [ "v*.*.*" ] # Triggers the build whenever a new version tag is pushed
 
 permissions:
   contents: read
-  packages: write  # No more "contents: write" needed!
+  packages: write
 
 jobs:
   build-and-publish:
@@ -19,7 +19,6 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    # Install Helm on the build runner
     - name: Install Helm
       uses: azure/setup-helm@v4
       with:
@@ -32,56 +31,33 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    # Dynamically extract Git metadata (Commit SHA & Tag Version)
-    - name: Extract Dynamic Version and Git Commit SHA
+    # Extract clean semver from Git tag (e.g., v1.0.0 -> 1.0.0)
+    - name: Extract Clean Version
       id: version_meta
       run: |
-        echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-        
-        # Check if this pipeline run was triggered by a Git Tag release
-        if [[ "${{ github.ref_type }}" == "tag" ]]; then
-          # Strip the leading 'v' (e.g., v0.1.0 becomes 0.1.0)
-          CLEAN_VERSION=${{ github.ref_name }}
-          CLEAN_VERSION=${CLEAN_VERSION#v}
-          echo "APP_VERSION=$CLEAN_VERSION" >> $GITHUB_ENV
-          echo "IS_RELEASE=true" >> $GITHUB_ENV
-        else
-          # Fallback configuration for normal commits pushed directly to the main branch
-          echo "APP_VERSION=0.0.0-snapshot" >> $GITHUB_ENV
-          echo "IS_RELEASE=false" >> $GITHUB_ENV
-        fi
+        CLEAN_VERSION=${{ github.ref_name }}
+        CLEAN_VERSION=${CLEAN_VERSION#v}
+        echo "APP_VERSION=$CLEAN_VERSION" >> $GITHUB_ENV
 
-    # 1. Build and Push the App Container
-    - name: Build and Push Enterprise Container Image
+    # 1. Build and Push Public Container Image
+    - name: Build and Push Container Image
       uses: docker/build-push-action@v6
       with:
         context: .
         push: true
-        # Dynamically applies versions. If it's a real tag release, it adds the absolute tag and :latest as well.
         tags: |
-          ghcr.io/arcturusconsulting/issem-gateway:${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}
-          ${{ env.IS_RELEASE == 'true' && format('ghcr.io/arcturusconsulting/issem-gateway:{0}', env.APP_VERSION) || '' }}
-          ${{ env.IS_RELEASE == 'true' && 'ghcr.io/arcturusconsulting/issem-gateway:latest' || '' }}
+          ghcr.io/arcturusconsulting/issem-gateway:${{ env.APP_VERSION }}
+          ghcr.io/arcturusconsulting/issem-gateway:latest
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    # 2. Package and Push the Helm Chart as an OCI Package
+    # 2. Package and Push Helm Chart as an OCI Package
     - name: Publish Helm Chart to GHCR
       run: |
-        # Log Helm client into GHCR
         echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
         
-        # Determine the target Helm package version
-        if [[ "${{ env.IS_RELEASE }}" == "true" ]]; then
-          CHART_VER="${{ env.APP_VERSION }}"
-        else
-          CHART_VER="${{ env.APP_VERSION }}-${{ env.SHORT_SHA }}"
-        fi
-
-        # Package the chart using the clean version for releases, or snapshot version for commits
         helm package deploy/issem-chart \
-          --version "$CHART_VER" \
-          --app-version "$CHART_VER"
+          --version "${{ env.APP_VERSION }}" \
+          --app-version "${{ env.APP_VERSION }}"
           
-        # Push the packaged chart to our OCI registry space
-        helm push issem-gateway-${CHART_VER}.tgz oci://ghcr.io/arcturusconsulting/charts
+        helm push issem-gateway-${{ env.APP_VERSION }}.tgz oci://ghcr.io/arcturusconsulting/charts

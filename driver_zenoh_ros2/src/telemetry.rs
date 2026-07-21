@@ -33,66 +33,14 @@ pub async fn start_telemetry_uplink(
                 continue;
             }
 
-            // Get current timestamp for sliding window lease checks
+            // Get current timestamp for telemetry logging and state freshness
             let current_timestamp = match std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH) {
                     Ok(duration) => duration.as_millis() as u64,
                     Err(_) => 0,
                 };
 
-            // ==============================================================================
-            // 🛡️ DYNAMIC ADMISSION CONTROL GATEKEEPER
-            // ==============================================================================
-            
-            // 1. Prune dead sessions (older than 15 seconds) from the active registry
-            let lease_ttl_ms = 15000; 
-            let expiration_threshold = current_timestamp.saturating_sub(lease_ttl_ms);
-            let _: Result<(), _> = redis::cmd("ZREMRANGEBYSCORE")
-                .arg("active_amrs")
-                .arg("-inf")
-                .arg(expiration_threshold)
-                .query_async(&mut redis_conn)
-                .await;
-
-            // 2. Check if this robot is already marked active
-            let is_already_active: Option<u64> = redis::cmd("ZSCORE")
-                .arg("active_amrs")
-                .arg(&serial_number)
-                .query_async(&mut redis_conn)
-                .await
-                .ok()
-                .flatten();
-
-            let allow_ingest = if is_already_active.is_some() {
-                true // Already registered, proceed to process and refresh lease
-            } else {
-                // Not registered yet: check the active registry size
-                let active_count: usize = redis::cmd("ZCARD")
-                    .arg("active_amrs")
-                    .query_async(&mut redis_conn)
-                    .await
-                    .unwrap_or(0);
-
-                if active_count < config.max_amr_fleet {
-                    info!(
-                        "🆕 [Admission Control] Dynamically admitting new AMR [{}] to session pool. Active: {}/{}", 
-                        serial_number, active_count + 1, config.max_amr_fleet
-                    );
-                    true
-                } else {
-                    warn!(
-                        "🚨 [Admission Control] Rejected telemetry from AMR [{}]. Active license limit of {} reached!", 
-                        serial_number, config.max_amr_fleet
-                    );
-                    false
-                }
-            };
-
-            if !allow_ingest {
-                continue; // Drop the telemetry packet entirely and skip serialization
-            }
-
-            // 3. Heartbeat keeping the robot lease fresh
+            // Update active AMR session heartbeat in Redis for overall system visibility
             let _: Result<(), _> = redis::cmd("ZADD")
                 .arg("active_amrs")
                 .arg(current_timestamp)
