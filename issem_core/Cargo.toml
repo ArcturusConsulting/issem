@@ -14,7 +14,6 @@ log = { workspace = true }
 env_logger = { workspace = true }
 zenoh = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["json", "env-filter"] }
-jsonwebtoken = { workspace = true }
 
 # Inter-workspace internal subsystem links
 adapter_vda5050 = { path = "../adapter_vda5050" }

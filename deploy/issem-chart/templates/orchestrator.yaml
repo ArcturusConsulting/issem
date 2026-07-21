@@ -16,8 +16,6 @@ spec:
     spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      imagePullSecrets:
-      - name: ghcr-auth
       containers:
       - name: orchestrator
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -39,10 +37,6 @@ spec:
           mountPath: /app/config.json
         - name: opc-mapping             # ◄ 1. Mounts the file inside the /app directory
           mountPath: /app/opc_ua_mapping.json
-        - name: pki-store
-          mountPath: /app/pki
-        - name: license-token
-          mountPath: /app/license.jwt
       volumes:
       - name: global-config
         hostPath:
@@ -51,12 +45,4 @@ spec:
       - name: opc-mapping             # ◄ 2. References the mapping file's physical host path
         hostPath:
           path: {{ .Values.hostPaths.opcUaMappingJson }}
-          type: File
-      - name: pki-store
-        hostPath:
-          path: {{ .Values.hostPaths.pkiDir }}
-          type: Directory
-      - name: license-token
-        hostPath:
-          path: {{ .Values.hostPaths.licenseJwt }}
           type: File

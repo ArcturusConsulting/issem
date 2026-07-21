@@ -11,9 +11,7 @@ envOverrides:
   plcEndpoint: "opc.tcp://127.0.0.1:4840/"
   redisUrl: "redis://redis:6379" # DO NOT CHANGE!
 
-# Physical host paths on the client server rack
+# [CONFIGURE THIS CORRECTLY!] Physical host paths on the client server rack
 hostPaths:
-  configJson: "/home/norrie/issem/deploy/config.json"
-  opcUaMappingJson: "/home/norrie/issem/deploy/opc_ua_mapping.json"
-  pkiDir: "/home/norrie/issem/vault/acme-logistics"
-  licenseJwt: "/home/norrie/issem/vault/acme-logistics/license.jwt"
+  configJson: "~/issem/deploy/config.json"
+  opcUaMappingJson: "~/issem/deploy/opc_ua_mapping.json"
