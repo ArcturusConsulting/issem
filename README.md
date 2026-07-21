@@ -214,6 +214,9 @@ sudo k3s kubectl -n argocd rollout status deployment argocd-server
 To monitor application health states visually, retrieve the secure access token and expose the dashboard layout:
 
 ```bash
+# 0. Run the mosquitto server
+sudo k3s kubectl apply -f [PATH_TO_THE_DIRECTORY/]deploy/mosquitto.yaml
+
 # 1. Retrieve the auto-generated admin password (username: admin)
 sudo k3s kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
 
